@@ -103,25 +103,40 @@ export class BunnyView implements ActorView {
     this.ring.opacity = 0.7;
     this.root.add(this.ring.mesh);
 
-    this.hearts = makeCanvasSprite(192, 64, 0.45);
-    this.hearts.sprite.position.y = 2.2;
+    this.hearts = makeCanvasSprite(192, 64, 0.62);
+    this.hearts.sprite.position.y = 2.3;
     this.root.add(this.hearts.sprite);
   }
 
-  setHearts(hp: number, max: number) {
+  setHearts(hp: number, max: number, cracked = false) {
     this.hearts.draw((g, w, h) => {
       const size = 44, gap = 10;
       const x0 = (w - (size * max + gap * (max - 1))) / 2;
       for (let i = 0; i < max; i++) {
         const x = x0 + i * (size + gap) + size / 2, y = h / 2;
-        g.fillStyle = i < hp ? '#ff4d6d' : 'rgba(0,0,0,0.35)';
+        const heart = () => {
+          g.beginPath();
+          g.moveTo(x, y + 16);
+          g.bezierCurveTo(x - 26, y - 2, x - 14, y - 22, x, y - 9);
+          g.bezierCurveTo(x + 14, y - 22, x + 26, y - 2, x, y + 16);
+        };
         g.strokeStyle = '#fff';
         g.lineWidth = 4;
-        g.beginPath();
-        g.moveTo(x, y + 16);
-        g.bezierCurveTo(x - 26, y - 2, x - 14, y - 22, x, y - 9);
-        g.bezierCurveTo(x + 14, y - 22, x + 26, y - 2, x, y + 16);
+        g.fillStyle = i < hp ? '#ff4d6d' : 'rgba(0,0,0,0.35)';
+        heart();
         g.fill();
+        // Punched once: the right half of the last heart goes grey.
+        if (cracked && i === hp - 1) {
+          g.save();
+          g.beginPath();
+          g.rect(x, 0, size, h);
+          g.clip();
+          g.fillStyle = 'rgba(60,60,60,0.85)';
+          heart();
+          g.fill();
+          g.restore();
+        }
+        heart();
         g.stroke();
       }
     });
@@ -145,6 +160,8 @@ export class BunnyView implements ActorView {
   }
 
   throwAnim() {}
+  setPunches() {}
+  punchAnim() {}
   setDead() {}
   setRevive() {}
   setCooldown() {}

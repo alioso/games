@@ -27,6 +27,7 @@ export const TEXT = {
   revived: 'REVIVED!',
   bought: 'BOUGHT!',
   notEnough: 'Not enough bloccoins',
-  outOfAmmo: 'No more grenades!',
-  outOfFuel: 'Out of fuel!',
+  outOfAmmo: 'No more grenades: punch time! 👊',
+  outOfFuel: 'Out of fuel: punch time! 👊',
+  punch: '👊 Punch!',
 };

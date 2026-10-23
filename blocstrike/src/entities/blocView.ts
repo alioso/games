@@ -30,7 +30,10 @@ export interface ActorView {
   snapYaw(yaw: number): void;
   hit(): void;
   throwAnim(): void;
-  setHearts(hp: number, max: number): void;
+  /** `cracked`: the next heart is half gone (bunny punched once). */
+  setHearts(hp: number, max: number, cracked?: boolean): void;
+  setPunches(n: number, max: number): void;
+  punchAnim(): void;
   setDead(dead: boolean): void;
   setRevive(progress: number): void;
   setCooldown(fraction: number): void;
@@ -63,6 +66,9 @@ export class BlocView implements ActorView {
   private ring;
   private reviveRing;
   private label: ReturnType<typeof makeCanvasSprite> | null = null;
+  private pips: ReturnType<typeof makeCanvasSprite>;
+  private fist: THREE.Mesh;
+  private fistT = 0;
   private walk = 0;
   private yaw = 0;
   private squash = 0;
@@ -118,6 +124,18 @@ export class BlocView implements ActorView {
     this.held.position.set(...grip.pos);
     this.held.rotation.x = grip.tilt;
     this.body.add(this.held);
+
+    // A fist that pops out when punching.
+    this.fist = new THREE.Mesh(new RoundedBoxGeometry(0.3, 0.3, 0.3, 2, 0.08), legMat);
+    this.fist.castShadow = true;
+    this.fist.visible = false;
+    this.body.add(this.fist);
+
+    // Punches taken, shown as little pips over the head.
+    this.pips = makeCanvasSprite(192, 40, 0.42);
+    this.pips.sprite.position.y = look.hat ? 2.35 : 1.85;
+    this.pips.sprite.visible = false;
+    this.root.add(this.pips.sprite);
 
     // Team ring on the ground. For human players it also shows the dash cooldown.
     const human = humanLabel !== null;
@@ -175,6 +193,29 @@ export class BlocView implements ActorView {
 
   setHearts() {}
 
+  setPunches(n: number, max: number) {
+    this.pips.sprite.visible = n > 0;
+    if (n <= 0) return;
+    this.pips.draw((g, w, h) => {
+      const r = 13, gap = 8;
+      const x0 = (w - (max * r * 2 + (max - 1) * gap)) / 2 + r;
+      for (let i = 0; i < max; i++) {
+        g.beginPath();
+        g.arc(x0 + i * (r * 2 + gap), h / 2, r, 0, Math.PI * 2);
+        g.fillStyle = i < n ? '#ffcc33' : 'rgba(0,0,0,0.35)';
+        g.fill();
+        g.lineWidth = 3;
+        g.strokeStyle = '#fff';
+        g.stroke();
+      }
+    });
+  }
+
+  punchAnim() {
+    this.fistT = 0.16;
+    this.squash = 0.2;
+  }
+
   poof() {}
 
   setDead(dead: boolean) {
@@ -212,6 +253,9 @@ export class BlocView implements ActorView {
     this.bodyMat.emissive.setScalar(this.flash * 0.9);
     if (this.rainbow) this.bodyMat.color.setHSL((this.time * 0.25) % 1, 0.85, 0.55);
     this.held.visible = s.holdingWeapon && this.deadT < 0;
+    this.fistT = Math.max(0, this.fistT - dt);
+    this.fist.visible = this.fistT > 0 && this.deadT < 0;
+    if (this.fist.visible) this.fist.position.set(0.3, -0.05, 0.55 + Math.sin((this.fistT / 0.16) * Math.PI) * 0.45);
     this.root.visible = this.time > this.blinkUntil || Math.sin(this.time * 30) > 0;
 
     if (this.deadT >= 0) {

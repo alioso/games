@@ -85,6 +85,35 @@ await wait(300);
 await shot('b2-bunny-hit');
 console.log('red bunny hp after one hit:', hp);
 
+// Punch: out of grenades, P1 punches a red bloc, a teammate, and the red bunny.
+await stage('grenade', -6, -6);
+const setup = await page.evaluate(() => {
+  const m = window.blocstrike.match;
+  const p1 = m.human(0);
+  p1.ammo = 0;
+  const red = m.blocs.find((b) => b.team.id === 1 && !b.isBunny);
+  red.x = p1.x + 1.4; red.z = p1.z;
+  return m.outOfAmmo(p1);
+});
+console.log('punch mode:', setup);
+const punchN = async (n) => { for (let i = 0; i < n; i++) { await page.keyboard.press('Space'); await wait(340); } };
+const pin = () => page.evaluate(() => { const m = window.blocstrike.match; const p1 = m.human(0); const red = m.blocs.find((b) => b.team.id === 1 && !b.isBunny); if (red.alive) { red.x = p1.x + 1.4; red.z = p1.z; red.kbX = red.kbZ = 0; } p1.aimX = 1; p1.aimZ = 0; });
+for (let i = 0; i < 3; i++) { await pin(); await punchN(1); }
+await shot('p1-punched-3');
+console.log('red after 3 punches:', await page.evaluate(() => { const r = window.blocstrike.match.blocs.find((b) => b.team.id === 1 && !b.isBunny); return r.state + ' punches=' + r.punches; }));
+for (let i = 0; i < 2; i++) { await pin(); await punchN(1); }
+console.log('red after 5 punches:', await page.evaluate(() => window.blocstrike.match.blocs.find((b) => b.team.id === 1 && !b.isBunny).state));
+const mate = await page.evaluate(() => { const m = window.blocstrike.match; const p1 = m.human(0); const t = m.blocs.find((b) => b.team.id === 0 && !b.isBunny && b !== p1); t.x = p1.x + 1.4; t.z = p1.z; p1.aimX = 1; p1.aimZ = 0; return t.id; });
+await punchN(2);
+console.log('teammate after 2 punches:', await page.evaluate((id) => { const t = window.blocstrike.match.blocs.find((b) => b.id === id); return t.state + ' punches=' + t.punches; }, mate));
+const bunPin = () => page.evaluate(() => { const m = window.blocstrike.match; const p1 = m.human(0); const bun = m.blocs.find((b) => b.isBunny && b.team.id === 1); bun.x = p1.x + 1.6; bun.z = p1.z + 2; p1.z = bun.z; bun.kbX = bun.kbZ = 0; p1.aimX = 1; p1.aimZ = 0; const mate = m.blocs.find((b) => b.team.id === 0 && !b.isBunny && b !== p1); mate.x = -14; });
+await bunPin(); await punchN(1);
+await shot('p2-bunny-cracked');
+const b1 = await page.evaluate(() => { const bun = window.blocstrike.match.blocs.find((b) => b.isBunny && b.team.id === 1); return `hp ${bun.hp} punches ${bun.punches}`; });
+await bunPin(); await punchN(1);
+const b2 = await page.evaluate(() => { const bun = window.blocstrike.match.blocs.find((b) => b.isBunny && b.team.id === 1); return `hp ${bun.hp} punches ${bun.punches}`; });
+console.log('bunny after 1 punch:', b1, '| after 2:', b2);
+
 await page.evaluate(() => { window.blocstrike.goMenu(); window.blocstrike.shop.open(); });
 await wait(1200);
 await shot('s1-shop-blocs');

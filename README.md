@@ -27,8 +27,9 @@ Weapons (each team picks one for the whole match, in **Play**):
 |---|---|
 | 🗡️ Spear | Throw, then walk over it to pick it up. Pierces up to 2 blocs. |
 | 🚀 Bazooka | Rocket with a small blast that also pushes people (into the pond!). 10 s reload. |
-| 💣 Big Grenade | **Hold** to throw further, release to throw. Bigger blast, 2 bunny hearts per hit, 3 per round. |
+| 💣 Big Grenade | **Hold** to throw further, release to throw. Bigger blast, 2 bunny hearts per hit, 5 per round. |
 | 🔥 Flamethrower | **Hold** to spray. Short range, burns teammates too. 20 s of fuel per round. |
+| 👊 Punch | When grenades or fuel run out, attack punches (hold to keep punching). Enemies only. 5 punches knock out a bloc; 2 punches take a bunny heart. Punches from teammates add up. |
 
 | | Keyboard (P1) | Keyboard (P2) | Gamepad |
 |---|---|---|---|
@@ -68,7 +69,7 @@ With `npm run dev` running:
 ```sh
 npm run shot                  # plays a round in headless Chrome, saves tools/shots/*.png
 node tools/mechanics.mjs      # stages a spear double hit and a piranha attack
-node tools/showcase.mjs       # stages each weapon, the bunny and the shop (incl. a purchase)
+node tools/showcase.mjs       # stages each weapon, punching, the bunny and the shop (incl. a purchase)
 node tools/closeups.mjs       # close-up renders of the bunny and skin/hat combos
 node tools/simulate.mjs       # computer-only rounds for every weapon matchup: length, kills, winners
 ```

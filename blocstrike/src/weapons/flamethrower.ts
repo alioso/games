@@ -34,15 +34,11 @@ export class Flamethrower implements Weapon {
 
   control(b: Bloc, c: Controls, dt: number) {
     const m = this.match;
-    const wasOut = b.fuel <= 0;
     b.firing = c.attack && b.fuel > 0;
-    if (c.attackPressed && wasOut && b.human !== null) {
-      m.sfx(SFX.empty);
-      m.say(TEXT.outOfFuel, 'small', b.team.color);
-    }
     if (!b.firing) return;
     b.fuel = Math.max(0, b.fuel - dt);
     b.armed = b.fuel > 0;
+    if (b.fuel <= 0 && b.human !== null) m.say(TEXT.outOfFuel, 'small', b.team.color);
 
     // Flames: hot glowing bits rushing out of the nozzle and rising.
     const nx = b.x + b.aimX * 0.95, nz = b.z + b.aimZ * 0.95;
@@ -91,7 +87,7 @@ export class Flamethrower implements Weapon {
   }
 
   status(b: Bloc) {
-    return { ready: b.fuel / FLAMETHROWER.fuel, label: b.fuel > 0 ? `Fuel ${Math.ceil(b.fuel)}s` : 'Out of fuel' };
+    return { ready: b.fuel / FLAMETHROWER.fuel, label: b.fuel > 0 ? `Fuel ${Math.ceil(b.fuel)}s` : TEXT.punch };
   }
 
   threats(): Threat[] {

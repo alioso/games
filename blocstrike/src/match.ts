@@ -8,7 +8,8 @@ import { Brain } from './ai/brain';
 import type { Arena } from './world/arena';
 import { TEAMS, type TeamDef } from './data/teams';
 import { AI_LEVELS, TUNING, type Difficulty } from './data/tuning';
-import type { WeaponId } from './data/weapons';
+import { PUNCH, type WeaponId } from './data/weapons';
+import { wrapAngle } from '@engine/math';
 import { SFX } from './data/sounds';
 import { TEXT } from './data/text';
 import type { Weapon, WeaponStatus } from './weapons/types';
@@ -228,7 +229,14 @@ export class Match {
         this.sfx(SFX.dash);
         this.particles.burst({ x: b.x, y: 0.15, z: b.z, count: 10, color: 0xe8e2c8, speed: 2, up: 1.5, size: 0.14, life: 0.5, dirX: -b.dashX, dirZ: -b.dashZ, spread: 1.4 });
       }
-      this.weaponFor(b.weapon).control(b, c, dt);
+      b.punchCooldown = Math.max(0, b.punchCooldown - dt);
+      if (this.outOfAmmo(b)) {
+        b.firing = false;
+        // Holding the button keeps punching.
+        if ((c.attackPressed || c.attack) && b.punchCooldown <= 0) this.punch(b);
+      } else {
+        this.weaponFor(b.weapon).control(b, c, dt);
+      }
     }
 
     if (b.dashTime > 0) {
@@ -295,6 +303,53 @@ export class Match {
 
   // ───────────────────────── hits ─────────────────────────
 
+  /** Grenades or fuel used up: this bloc fights with its fists. */
+  outOfAmmo(b: Bloc) {
+    return (b.weapon === 'grenade' && b.ammo <= 0 && b.charge < 0) || (b.weapon === 'flamethrower' && b.fuel <= 0);
+  }
+
+  /** Who a punch from b would land on: the closest enemy in front, within reach. */
+  punchTarget(b: Bloc) {
+    let best: Bloc | null = null, bestD = Infinity;
+    const aim = Math.atan2(b.aimX, b.aimZ);
+    for (const t of this.blocs) {
+      if (!t.alive || t.team === b.team || t.shield > 0) continue;
+      const dx = t.x - b.x, dz = t.z - b.z, d = Math.hypot(dx, dz);
+      if (d - b.radius - t.radius > PUNCH.reach) continue;
+      if (Math.abs(wrapAngle(Math.atan2(dx, dz) - aim)) > (PUNCH.coneDeg * Math.PI) / 180) continue;
+      if (d < bestD) { bestD = d; best = t; }
+    }
+    return best;
+  }
+
+  private punch(b: Bloc) {
+    b.punchCooldown = PUNCH.cooldown;
+    b.view.punchAnim();
+    const t = this.punchTarget(b);
+    if (!t) { this.sfx(SFX.whiff); return; }
+    const dx = t.x - b.x, dz = t.z - b.z, d = Math.hypot(dx, dz) || 1;
+    const nx = dx / d, nz = dz / d;
+    t.kbX += nx * PUNCH.push * (t.isBunny ? 0.5 : 1);
+    t.kbZ += nz * PUNCH.push * (t.isBunny ? 0.5 : 1);
+    t.punches++;
+    t.view.hit();
+    this.sfx(SFX.punch);
+    this.glow.burst({ x: t.x - nx * t.radius, y: 1, z: t.z - nz * t.radius, count: 8, color: 0xffe066, intensity: 2.5, speed: 3, up: 3, size: 0.1, life: 0.4, gravity: 2 });
+    this.shake(0.15);
+    if (t.isBunny) {
+      if (t.punches >= PUNCH.perBunnyHeart) {
+        t.punches = 0;
+        this.damageBunny(t, b, nx, nz);
+      } else {
+        t.view.setHearts(t.hp, TUNING.bunny.hp, true);
+      }
+    } else if (t.punches >= PUNCH.toKnockOut) {
+      this.kill(t, b, nx, nz);
+    } else {
+      t.view.setPunches(t.punches, PUNCH.toKnockOut);
+    }
+  }
+
   kill(b: Bloc, by: Bloc | null, dirX = 1, dirZ = 0) {
     if (!b.alive) return;
     if (by) {
@@ -302,6 +357,8 @@ export class Match {
       else this.stats.enemyKills++;
     }
     b.state = 'dead';
+    b.punches = 0;
+    b.view.setPunches(0, PUNCH.toKnockOut);
     b.reviveProgress = 0;
     b.dashTime = 0;
     b.kbX = b.kbZ = 0;
@@ -323,7 +380,7 @@ export class Match {
     }
     r.hp = Math.max(0, r.hp - hearts);
     r.view.hit();
-    r.view.setHearts(r.hp, TUNING.bunny.hp);
+    r.view.setHearts(r.hp, TUNING.bunny.hp, r.punches > 0);
     this.sfx(SFX.bunnyHit);
     this.particles.burst({ x: r.x, y: 0.9, z: r.z, count: 10, color: 0xffffff, speed: 2.5, up: 3, size: 0.12, gravity: 3, dirX, dirZ, spread: 2 });
     this.shake(0.3);
@@ -458,9 +515,8 @@ export class Match {
   private checkEnd(dt: number) {
     const left = this.teams.filter((t) => !this.eliminated.has(t.id));
     if (left.length <= 1) return this.finish(left[0] ?? null);
-    // Nobody left who can fight (no fighters, or nothing left to fight with): a draw.
-    const canFight = this.blocs.some((b) => b.alive && !b.isBunny && !this.eliminated.has(b.team.id) &&
-      !(b.weapon === 'grenade' && b.ammo === 0) && !(b.weapon === 'flamethrower' && b.fuel <= 0));
+    // Nobody left standing on any team: a draw. (Out of ammo still counts: you can punch.)
+    const canFight = this.blocs.some((b) => b.alive && !b.isBunny && !this.eliminated.has(b.team.id));
     this.drawTimer = canFight ? 0 : this.drawTimer + dt;
     if (this.drawTimer > 2.5) this.finish(null);
   }
@@ -523,7 +579,7 @@ export class Match {
         yaw: b.yaw,
         dashing: b.dashTime > 0,
         // Spear and grenade leave the hand when thrown; bazooka and flamethrower stay.
-        holdingWeapon: b.armed || b.weapon === 'bazooka' || b.weapon === 'flamethrower',
+        holdingWeapon: b.armed || b.weapon === 'bazooka' || (b.weapon === 'flamethrower' && b.fuel > 0),
       });
     }
     for (const w of this.weapons.values()) w.render(dt);

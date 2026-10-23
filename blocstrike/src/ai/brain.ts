@@ -152,14 +152,6 @@ export class Brain {
 
   // ───────────── fighter ─────────────
 
-  /** Can this bloc still attack at all? */
-  private hasWeapon() {
-    const me = this.me;
-    if (me.weapon === 'grenade') return me.ammo > 0;
-    if (me.weapon === 'flamethrower') return me.fuel > 0;
-    return true;
-  }
-
   private fighter(dt: number, c: Controls) {
     const me = this.me;
     const style = STYLE[me.weapon];
@@ -196,10 +188,9 @@ export class Brain {
       }
     }
 
-    // 3. Nothing left to fight with: stand guard between our bunny and the enemy.
-    if (!this.hasWeapon()) {
-      this.guard(c);
-      this.separate(c);
+    // 3. Out of grenades or fuel: walk up and punch.
+    if (this.match.outOfAmmo(me)) {
+      this.brawl(dt, c, target);
       return;
     }
 
@@ -232,6 +223,7 @@ export class Brain {
   private attack(dt: number, c: Controls, target: Bloc | null, dist: number, canSee: boolean) {
     const me = this.me;
     const style = STYLE[me.weapon];
+    if (this.match.outOfAmmo(me)) return; // fists only: brawl() handles it
 
     // A grenade throw in progress: keep holding until it's charged enough, then let go.
     if (me.weapon === 'grenade' && this.chargeGoal >= 0) {
@@ -272,6 +264,26 @@ export class Brain {
       // Pick how long to hold for the distance (computer players misjudge it a little too).
       const want = clamp(dist + rand(-1, 1) * this.level.aimError * 0.06, GRENADE.minDistance, GRENADE.maxDistance);
       this.chargeGoal = ((want - GRENADE.minDistance) / (GRENADE.maxDistance - GRENADE.minDistance)) * GRENADE.fullChargeTime;
+    }
+  }
+
+  /** Fists only: get next to the target, face it, and punch when it's in reach. */
+  private brawl(dt: number, c: Controls, target: Bloc | null) {
+    const me = this.me;
+    const inReach = this.match.punchTarget(me);
+    const t = inReach ?? target;
+    if (!t) return;
+    const dx = t.x - me.x, dz = t.z - me.z, d = Math.hypot(dx, dz) || 1;
+    c.hasAim = true;
+    c.aimX = dx / d;
+    c.aimZ = dz / d;
+    if (inReach) {
+      // A short pause before each swing so computer players aren't punching machines.
+      this.react += dt;
+      if (this.react >= this.level.reaction * 0.35) { c.attack = true; this.react = 0; }
+    } else {
+      this.goTo({ x: t.x, z: t.z }, c, true);
+      this.separate(c);
     }
   }
 

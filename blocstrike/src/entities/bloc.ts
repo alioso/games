@@ -40,6 +40,9 @@ export class Bloc {
   firing = false; // flamethrower on
   /** Seconds spent in someone's flames. */
   burn = 0;
+  /** Punches taken (blocs: knocked out at PUNCH.toKnockOut; bunnies: a heart every PUNCH.perBunnyHeart). */
+  punches = 0;
+  punchCooldown = 0;
 
   dashCooldown = 0;
   dashTime = 0;

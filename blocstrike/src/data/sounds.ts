@@ -61,6 +61,13 @@ export const SFX = {
   flame() {
     synth.noise({ dur: 0.12, freq: 700, q: 0.5, vol: 0.18 });
   },
+  punch() {
+    synth.noise({ dur: 0.08, freq: 1200, to: 400, q: 1, vol: 0.3 });
+    synth.tone({ freq: 180, to: 90, dur: 0.1, type: 'square', vol: 0.2 });
+  },
+  whiff() {
+    synth.noise({ dur: 0.1, freq: 2000, to: 3500, q: 2, vol: 0.12 });
+  },
   empty() {
     synth.tone({ freq: 160, dur: 0.06, type: 'square', vol: 0.12 });
   },

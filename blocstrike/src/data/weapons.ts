@@ -30,7 +30,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     name: 'Big Grenade',
     icon: '💣',
     price: 50,
-    description: 'Big blast, only 3 per player. Hold longer to throw further.',
+    description: 'Big blast, 5 per player. Hold longer to throw further.',
   },
   flamethrower: {
     id: 'flamethrower',
@@ -63,7 +63,7 @@ export const BAZOOKA = {
 };
 
 export const GRENADE = {
-  perPlayer: 3, // per round
+  perPlayer: 5, // per round
   minDistance: 3,
   maxDistance: 12,
   fullChargeTime: 1.1, // seconds of holding for the longest throw
@@ -81,4 +81,14 @@ export const FLAMETHROWER = {
   coneDeg: 28, // half-angle of the flame cone
   burnTime: 0.15, // seconds in the flames before a bloc is out
   bunnyBurnTime: 0.8, // seconds in the flames per bunny heart
+};
+
+/** When grenades or fuel run out, the attack button punches instead. Punches only hurt the other team. */
+export const PUNCH = {
+  reach: 0.45, // gap between the two bodies
+  coneDeg: 70, // how far off to the side still counts as "in front"
+  cooldown: 0.3, // seconds between punches
+  toKnockOut: 5, // punches to knock out a bloc
+  perBunnyHeart: 2, // punches per bunny heart
+  push: 5,
 };

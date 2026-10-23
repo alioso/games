@@ -59,13 +59,7 @@ export class Grenade implements Weapon {
 
   control(b: Bloc, c: Controls, dt: number) {
     b.armed = b.ammo > 0;
-    if (!b.armed) {
-      if (c.attackPressed && b.human !== null) {
-        this.match.sfx(SFX.empty);
-        this.match.say(TEXT.outOfAmmo, 'small', b.team.color);
-      }
-      return;
-    }
+    if (!b.armed) return;
     if (b.charge < 0 && c.attackPressed) b.charge = 0;
     if (b.charge < 0) return;
     b.charge += dt;
@@ -77,6 +71,7 @@ export class Grenade implements Weapon {
   private throwFrom(b: Bloc, dist: number) {
     const [dx, dz] = aimAssist(this.match, b, b.aimX, b.aimZ, dist + 2);
     b.ammo--;
+    if (b.ammo === 0 && b.human !== null) this.match.say(TEXT.outOfAmmo, 'small', b.team.color);
     const T = GRENADE.flightTime;
     const vh = dist / T;
     const mesh = makeGrenadeModel();
@@ -188,7 +183,7 @@ export class Grenade implements Weapon {
   }
 
   status(b: Bloc) {
-    return { ready: b.ammo / GRENADE.perPlayer, label: b.ammo ? `${'💣'.repeat(b.ammo)}` : 'No grenades' };
+    return { ready: b.ammo / GRENADE.perPlayer, label: b.ammo ? `${'💣'.repeat(b.ammo)}` : TEXT.punch };
   }
 
   threats(): Threat[] {
