@@ -33,14 +33,14 @@ await wait(6000);
 await page.screenshot({ path: out + '4-battle.png' });
 const state = await page.evaluate(() => {
   const m = window.blocstrike.match;
-  return { phase: m.phase, time: m.time.toFixed(1), status: m.status().map((s) => ({ team: s.team.name, blocs: s.blocs.map((b) => b.state).join(','), robot: s.robotHp })) };
+  return { phase: m.phase, time: m.time.toFixed(1), status: m.status().map((s) => ({ team: s.team.name, blocs: s.blocs.map((b) => b.state).join(','), bunny: s.bunnyHp })) };
 });
 console.log(JSON.stringify(state, null, 1));
 await wait(12000);
 await page.screenshot({ path: out + '5-later.png' });
 const state2 = await page.evaluate(() => {
   const m = window.blocstrike.match;
-  return { phase: m.phase, time: m.time.toFixed(1), status: m.status().map((s) => ({ team: s.team.name, blocs: s.blocs.map((b) => b.state).join(','), robot: s.robotHp })) };
+  return { phase: m.phase, time: m.time.toFixed(1), status: m.status().map((s) => ({ team: s.team.name, blocs: s.blocs.map((b) => b.state).join(','), bunny: s.bunnyHp })) };
 });
 console.log(JSON.stringify(state2, null, 1));
 console.log(errors.length ? errors.join('\n') : 'no console errors');

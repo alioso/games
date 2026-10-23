@@ -1,20 +1,30 @@
 import * as THREE from 'three';
 import type { Controls } from '@engine/input';
-import { clamp, damp, segmentCircle, wrapAngle } from '@engine/math';
+import { clamp, damp } from '@engine/math';
 import type { Particles } from '@engine/particles';
 import { Bloc } from './entities/bloc';
-import { Spear } from './entities/spear';
+import type { BlocLook } from './entities/blocView';
 import { Brain } from './ai/brain';
 import type { Arena } from './world/arena';
 import { TEAMS, type TeamDef } from './data/teams';
 import { AI_LEVELS, TUNING, type Difficulty } from './data/tuning';
-import { SPEAR } from './data/weapons';
+import type { WeaponId } from './data/weapons';
 import { SFX } from './data/sounds';
 import { TEXT } from './data/text';
+import type { Weapon, WeaponStatus } from './weapons/types';
+import { SpearWeapon } from './weapons/spearWeapon';
+import { Bazooka } from './weapons/bazooka';
+import { Grenade } from './weapons/grenade';
+import { Flamethrower } from './weapons/flamethrower';
 
+/** One round. A match (best of 5) is a series of these, run by main.ts. */
 export interface MatchSetup {
   /** Which team each human player is on (index = player number). */
   humans: number[];
+  /** Hat and skin for each human player. */
+  looks: BlocLook[];
+  /** Weapon for each team (index = team id). */
+  weapons: WeaponId[];
   teamCount: 2 | 4;
   difficulty: Difficulty;
   /** Menu background: no sounds, no banners. */
@@ -32,8 +42,18 @@ export interface MatchEvents {
 export interface TeamStatus {
   team: TeamDef;
   blocs: { state: Bloc['state']; human: number | null }[];
-  robotHp: number;
+  bunnyHp: number;
   eliminated: boolean;
+}
+
+export interface PlayerStatus {
+  player: number;
+  team: TeamDef;
+  weapon: WeaponId;
+  alive: boolean;
+  weaponStatus: WeaponStatus;
+  dash: number; // 0..1
+  revives: number;
 }
 
 const NO_INPUT: Controls = {
@@ -47,23 +67,34 @@ function spawnSpots(team: number, teamCount: number, halfW: number, halfD: numbe
     const s = team === 0 ? -1 : 1;
     return {
       blocs: [-0.45, 0, 0.45].map((k) => ({ x: s * (halfW - 5), z: k * halfD })),
-      robot: { x: s * (halfW - 2.8), z: 0 },
+      bunny: { x: s * (halfW - 2.8), z: 0 },
     };
   }
   const sx = team % 2 === 0 ? -1 : 1, sz = team < 2 ? -1 : 1;
   const cx = sx * (halfW - 6), cz = sz * (halfD - 4.5);
   return {
     blocs: [{ x: cx, z: cz - sz * 2.5 }, { x: cx - sx * 3, z: cz }, { x: cx + sx * 1.5, z: cz + sz * 1.5 }],
-    robot: { x: sx * (halfW - 2.5), z: sz * (halfD - 2.5) },
+    bunny: { x: sx * (halfW - 2.5), z: sz * (halfD - 2.5) },
   };
 }
+
+interface Fx {
+  mesh: THREE.Mesh;
+  t: number;
+  dur: number;
+  kind: 'shock' | 'scorch';
+  size: number;
+}
+
+const SHOCK_GEO = new THREE.RingGeometry(0.8, 1, 48).rotateX(-Math.PI / 2);
+const SCORCH_GEO = new THREE.CircleGeometry(1, 32).rotateX(-Math.PI / 2);
 
 export class Match {
   readonly group = new THREE.Group();
   readonly blocs: Bloc[] = [];
-  readonly spears: Spear[] = [];
   readonly teams: TeamDef[];
   readonly brains = new Map<Bloc, Brain>();
+  readonly weapons = new Map<WeaponId, Weapon>();
   readonly eliminated = new Set<number>();
   phase: 'countdown' | 'playing' | 'over' = 'countdown';
   time = 0;
@@ -71,38 +102,50 @@ export class Match {
   private lastCount = 4;
   private drawTimer = 0;
   private sinking: { bloc: Bloc; t: number }[] = [];
+  private fx: Fx[] = [];
   /** Counters for balancing (see simulate() in main.ts). */
-  readonly stats = { friendlyKills: 0, enemyKills: 0, friendlyRobotHits: 0, enemyRobotHits: 0 };
+  readonly stats = { friendlyKills: 0, enemyKills: 0, friendlyBunnyHits: 0, enemyBunnyHits: 0 };
 
   constructor(
     readonly arena: Arena,
     readonly setup: MatchSetup,
-    private particles: Particles,
-    private glow: Particles,
+    readonly particles: Particles,
+    readonly glow: Particles,
     private events: MatchEvents,
   ) {
     this.teams = TEAMS.slice(0, setup.teamCount);
     const level = AI_LEVELS[setup.difficulty];
     for (const team of this.teams) {
+      const weaponId = setup.weapons[team.id] ?? 'spear';
+      const weapon = this.weaponFor(weaponId);
       const spots = spawnSpots(team.id, setup.teamCount, arena.def.halfW, arena.def.halfD);
       const humansHere = setup.humans.map((t, p) => (t === team.id ? p : -1)).filter((p) => p >= 0);
       spots.blocs.slice(0, TUNING.teams.blocsPerTeam).forEach((s, i) => {
         const human = i < humansHere.length ? humansHere[i] : null;
-        const b = new Bloc('bloc', team, s.x, s.z, human);
-        const spear = new Spear(b);
-        b.spear = spear;
-        b.holdingSpear = true;
-        spear.addTo(this.group);
-        this.spears.push(spear);
+        const look = human !== null ? setup.looks[human] : undefined;
+        const b = new Bloc('bloc', team, s.x, s.z, human, weaponId, look);
+        weapon.attach(b);
         this.add(b, human === null ? new Brain(b, this, level) : null);
       });
-      const robot = new Bloc('robot', team, spots.robot.x, spots.robot.z, null);
-      this.add(robot, new Brain(robot, this, level));
+      const bunny = new Bloc('bunny', team, spots.bunny.x, spots.bunny.z, null, weaponId);
+      this.add(bunny, new Brain(bunny, this, level));
     }
     if (setup.demo) {
       this.phase = 'playing';
       this.countdownT = 0;
     }
+  }
+
+  private weaponFor(id: WeaponId): Weapon {
+    let w = this.weapons.get(id);
+    if (!w) {
+      w = id === 'spear' ? new SpearWeapon(this)
+        : id === 'bazooka' ? new Bazooka(this)
+        : id === 'grenade' ? new Grenade(this)
+        : new Flamethrower(this);
+      this.weapons.set(id, w);
+    }
+    return w;
   }
 
   private add(b: Bloc, brain: Brain | null) {
@@ -111,12 +154,16 @@ export class Match {
     if (brain) this.brains.set(b, brain);
   }
 
-  private say(text: string, style: 'big' | 'small' = 'big', color?: number) {
-    if (!this.setup.demo) this.events.banner(text, style, color);
+  say(text: string, style: 'big' | 'small' = 'big', color?: number) {
+    if (!this.setup.demo && this.phase !== 'over') this.events.banner(text, style, color);
   }
 
-  private sfx(fn: () => void) {
+  sfx(fn: () => void) {
     if (!this.setup.demo) fn();
+  }
+
+  shake(amount: number) {
+    if (!this.setup.demo) this.events.shake(amount);
   }
 
   // ───────────────────────── simulation ─────────────────────────
@@ -150,7 +197,7 @@ export class Match {
       if (b.alive && this.arena.pondAt(b.x, b.z)) this.eaten(b);
     }
 
-    for (const s of this.spears) this.updateSpear(s, dt);
+    for (const w of this.weapons.values()) w.update(dt);
     this.updateRevives(dt);
     this.updateSinking(dt);
     if (this.phase === 'playing') this.checkEnd(dt);
@@ -171,7 +218,7 @@ export class Match {
       b.aimZ = c.moveZ / m;
     }
 
-    if (!b.isRobot) {
+    if (!b.isBunny) {
       if (c.dashPressed && b.dashCooldown <= 0) {
         b.dashCooldown = T.dashCooldown;
         b.dashTime = T.dashTime;
@@ -181,7 +228,7 @@ export class Match {
         this.sfx(SFX.dash);
         this.particles.burst({ x: b.x, y: 0.15, z: b.z, count: 10, color: 0xe8e2c8, speed: 2, up: 1.5, size: 0.14, life: 0.5, dirX: -b.dashX, dirZ: -b.dashZ, spread: 1.4 });
       }
-      if (c.attackPressed && b.holdingSpear && b.spear) this.throwSpear(b);
+      this.weaponFor(b.weapon).control(b, c, dt);
     }
 
     if (b.dashTime > 0) {
@@ -190,44 +237,25 @@ export class Match {
       b.vx = b.dashX * v;
       b.vz = b.dashZ * v;
     } else {
-      b.vx = damp(b.vx, c.moveX * b.speed, 18, dt);
-      b.vz = damp(b.vz, c.moveZ * b.speed, 18, dt);
+      // Spraying flames slows you down a bit.
+      const speed = b.firing ? b.speed * 0.6 : b.speed;
+      b.vx = damp(b.vx, c.moveX * speed, 18, dt);
+      b.vz = damp(b.vz, c.moveZ * speed, 18, dt);
     }
-    const nx = b.x + b.vx * dt, nz = b.z + b.vz * dt;
+    const wx = b.x + b.vx * dt, wz = b.z + b.vz * dt;
     // Computer players never walk into the water by accident (humans can!).
-    if (b.human === null && this.arena.pondAt(nx, nz)) {
+    if (b.human === null && this.arena.pondAt(wx, wz)) {
       b.vx = b.vz = 0;
     } else {
-      b.x = nx;
-      b.z = nz;
+      b.x = wx;
+      b.z = wz;
     }
+    // Explosion push applies to everyone: a blast can knock anybody into the pond.
+    b.x += b.kbX * dt;
+    b.z += b.kbZ * dt;
+    b.kbX = damp(b.kbX, 0, TUNING.knockback.decay, dt);
+    b.kbZ = damp(b.kbZ, 0, TUNING.knockback.decay, dt);
     b.yaw = Math.atan2(b.aimX, b.aimZ);
-  }
-
-  private throwSpear(b: Bloc) {
-    let dx = b.aimX, dz = b.aimZ;
-    if (b.human !== null) [dx, dz] = this.aimAssist(b, dx, dz);
-    b.holdingSpear = false;
-    b.spear!.launch(b.x + dx * 0.5, b.z + dz * 0.5, dx, dz);
-    b.view.throwAnim();
-    this.sfx(SFX.throw);
-  }
-
-  /** Nudge a human's aim onto the enemy closest to where they're pointing. */
-  private aimAssist(b: Bloc, dx: number, dz: number): [number, number] {
-    const maxAngle = (TUNING.aimAssistDeg.human * Math.PI) / 180;
-    const aim = Math.atan2(dx, dz);
-    let best: Bloc | null = null, bestA = maxAngle;
-    for (const o of this.blocs) {
-      if (!o.alive || o.team === b.team) continue;
-      const ox = o.x - b.x, oz = o.z - b.z;
-      if (Math.hypot(ox, oz) > SPEAR.range) continue;
-      const a = Math.abs(wrapAngle(Math.atan2(ox, oz) - aim));
-      if (a < bestA) { bestA = a; best = o; }
-    }
-    if (!best) return [dx, dz];
-    const ox = best.x - b.x, oz = best.z - b.z, l = Math.hypot(ox, oz);
-    return [ox / l, oz / l];
   }
 
   private collide() {
@@ -242,8 +270,8 @@ export class Match {
           const d = Math.hypot(dx, dz);
           if (d >= min || d < 1e-5) continue;
           const push = min - d;
-          // Robots are heavy: blocs barely move them.
-          const wa = a.isRobot && !b.isRobot ? 0.1 : b.isRobot && !a.isRobot ? 0.9 : 0.5;
+          // Bunnies stand their ground: blocs barely move them.
+          const wa = a.isBunny && !b.isBunny ? 0.1 : b.isBunny && !a.isBunny ? 0.9 : 0.5;
           a.x -= (dx / d) * push * wa;
           a.z -= (dz / d) * push * wa;
           b.x += (dx / d) * push * (1 - wa);
@@ -265,150 +293,111 @@ export class Match {
     }
   }
 
-  private updateSpear(s: Spear, dt: number) {
-    const owner = s.owner;
-    switch (s.state) {
-      case 'flying': this.flySpear(s, dt); break;
-      case 'falling':
-        s.y -= dt * 4;
-        s.x += s.dirX * dt * 3;
-        s.z += s.dirZ * dt * 3;
-        if (s.y <= 0.12) {
-          s.y = 0.12;
-          s.state = 'grounded';
-          if (this.arena.pondAt(s.x, s.z)) {
-            s.state = 'sinking';
-            s.timer = SPEAR.waterReturn;
-            this.sfx(SFX.splash);
-            this.particles.burst({ x: s.x, y: 0.1, z: s.z, count: 14, color: 0xe8fbff, speed: 2, up: 4, size: 0.1 });
-          }
-        }
-        break;
-      case 'sinking':
-        s.y = Math.max(-1, s.y - dt * 0.8);
-        s.timer -= dt;
-        // The piranhas spit it back out to its owner.
-        if (s.timer <= 0 && owner.state !== 'eaten' && owner.state !== 'gone') {
-          s.state = 'held';
-          owner.holdingSpear = true;
-        }
-        break;
+  // ───────────────────────── hits ─────────────────────────
+
+  kill(b: Bloc, by: Bloc | null, dirX = 1, dirZ = 0) {
+    if (!b.alive) return;
+    if (by) {
+      if (by.team === b.team) this.stats.friendlyKills++;
+      else this.stats.enemyKills++;
     }
-    if ((s.state === 'grounded' || s.state === 'stuck' || s.state === 'falling') && owner.alive) {
-      if (Math.hypot(owner.x - s.x, owner.z - s.z) < SPEAR.pickupRadius + (s.state === 'stuck' ? 0.4 : 0)) {
-        s.state = 'held';
-        owner.holdingSpear = true;
-        if (owner.human !== null) this.sfx(SFX.pickup);
-      }
-    }
+    b.state = 'dead';
+    b.reviveProgress = 0;
+    b.dashTime = 0;
+    b.kbX = b.kbZ = 0;
+    b.view.setDead(true);
+    b.view.hit();
+    this.weaponFor(b.weapon).onDeath(b, dirX, dirZ);
+    this.particles.burst({ x: b.x, y: 0.9, z: b.z, count: 26, color: b.team.color, speed: 5, up: 5, size: 0.2 });
+    this.glow.burst({ x: b.x, y: 0.9, z: b.z, count: 14, color: 0xfff3b0, intensity: 3, speed: 6, up: 3, size: 0.09, life: 0.4, gravity: 0 });
+    this.sfx(SFX.hit);
+    this.shake(b.human !== null ? 0.6 : 0.35);
+    if (b.human !== null) this.say(`P${b.human + 1} is down! A teammate can revive you`, 'small', b.team.color);
   }
 
-  private flySpear(s: Spear, dt: number) {
-    const { halfW, halfD } = this.arena.def;
-    const step = SPEAR.speed * dt;
-    const nx = s.x + s.dirX * step, nz = s.z + s.dirZ * step;
-    let tStop = 1;
-    let stop: 'obstacle' | 'wall' | null = null;
-    for (const o of this.arena.obstacles) {
-      const t = segmentCircle(s.x, s.z, nx, nz, o.x, o.z, o.r + 0.05);
-      if (t !== null && t < tStop) { tStop = t; stop = 'obstacle'; }
+  damageBunny(r: Bloc, by: Bloc | null, dirX: number, dirZ: number, hearts = 1) {
+    if (this.phase === 'over' || !r.alive) return;
+    if (by) {
+      if (by.team === r.team) this.stats.friendlyBunnyHits++;
+      else this.stats.enemyBunnyHits++;
     }
-    const wallT = (from: number, to: number, lim: number) =>
-      Math.abs(to) > lim ? (Math.sign(to) * lim - from) / (to - from) : null;
-    for (const t of [wallT(s.x, nx, halfW), wallT(s.z, nz, halfD)]) {
-      if (t !== null && t >= 0 && t < tStop) { tStop = t; stop = 'wall'; }
-    }
+    r.hp = Math.max(0, r.hp - hearts);
+    r.view.hit();
+    r.view.setHearts(r.hp, TUNING.bunny.hp);
+    this.sfx(SFX.bunnyHit);
+    this.particles.burst({ x: r.x, y: 0.9, z: r.z, count: 10, color: 0xffffff, speed: 2.5, up: 3, size: 0.12, gravity: 3, dirX, dirZ, spread: 2 });
+    this.shake(0.3);
+    if (r.hp <= 0) this.poofBunny(r);
+  }
 
-    const hits: { b: Bloc; t: number }[] = [];
+  private poofBunny(r: Bloc) {
+    r.state = 'gone';
+    r.view.poof();
+    this.sfx(SFX.bunnyPoof);
+    // A soft cloud of fluff and little hearts.
+    this.particles.burst({ x: r.x, y: 0.8, z: r.z, count: 40, color: 0xffffff, speed: 3, up: 3, size: 0.28, life: 1.4, gravity: -0.5 });
+    this.glow.burst({ x: r.x, y: 1, z: r.z, count: 24, color: 0xff7aa8, intensity: 2.2, speed: 2, up: 4, size: 0.12, life: 1.2, gravity: -1 });
+    this.shake(0.5);
+    this.eliminate(r.team);
+  }
+
+  /** Kills blocs inside `blast`, chips bunnies, and pushes everyone within `pushR`. */
+  explode(x: number, z: number, blast: number, pushR: number, push: number, bunnyDamage: number, owner: Bloc, big: boolean) {
+    let kills = 0;
     for (const b of this.blocs) {
-      if (!b.alive || b === s.owner || s.hit.has(b.id) || b.shield > 0) continue;
-      const t = segmentCircle(s.x, s.z, nx, nz, b.x, b.z, b.radius + 0.18);
-      if (t !== null && t <= tStop) hits.push({ b, t });
-    }
-    hits.sort((a, b) => a.t - b.t);
-    for (const { b, t } of hits) {
-      s.hit.add(b.id);
-      const hx = s.x + (nx - s.x) * t, hz = s.z + (nz - s.z) * t;
-      if (b.isRobot) {
-        if (b.team === s.owner.team) this.stats.friendlyRobotHits++; else this.stats.enemyRobotHits++;
-        this.damageRobot(b, s);
-        this.drop(s, hx - s.dirX * 0.6, hz - s.dirZ * 0.6);
-        return;
-      }
-      if (b.team === s.owner.team) this.stats.friendlyKills++; else this.stats.enemyKills++;
-      this.kill(b, s);
-      s.kills++;
-      if (s.kills === 2) this.doubleHit(s);
-      if (s.kills >= SPEAR.maxKills) {
-        this.drop(s, hx, hz);
-        return;
+      if (!b.alive) continue;
+      const dx = b.x - x, dz = b.z - z;
+      const d = Math.hypot(dx, dz);
+      const nx = d > 0.01 ? dx / d : 1, nz = d > 0.01 ? dz / d : 0;
+      if (d < blast + b.radius * 0.5 && b.shield <= 0) {
+        if (b.isBunny) this.damageBunny(b, owner, nx, nz, bunnyDamage);
+        else { this.kill(b, owner, nx, nz); kills++; }
+      } else if (d < pushR) {
+        const k = (1 - d / pushR) * push * (b.isBunny ? 0.4 : 1);
+        b.kbX += nx * k;
+        b.kbZ += nz * k;
       }
     }
+    if (kills >= 2) this.multiHit(kills, owner.team.color);
 
-    s.x += (nx - s.x) * tStop;
-    s.z += (nz - s.z) * tStop;
-    s.traveled += step * tStop;
-    if (stop === 'obstacle') {
-      s.state = 'stuck';
-      s.x -= s.dirX * 0.55;
-      s.z -= s.dirZ * 0.55;
-      this.sfx(SFX.thunk);
-      this.particles.burst({ x: s.x + s.dirX * 0.9, y: 1, z: s.z + s.dirZ * 0.9, count: 8, color: 0x8a6a4a, speed: 2.5, up: 2, size: 0.1, dirX: -s.dirX, dirZ: -s.dirZ });
-    } else if (stop === 'wall') {
-      this.drop(s, s.x - s.dirX * 0.3, s.z - s.dirZ * 0.3);
-      this.sfx(SFX.thunk);
-    } else if (s.traveled >= SPEAR.range) {
-      s.state = 'falling';
-    }
+    const s = big ? 1.4 : 1;
+    this.glow.burst({ x, y: 0.6, z, count: Math.round(50 * s), color: 0xffb040, intensity: 3.5, speed: 7 * s, up: 4, size: 0.2 * s, life: 0.5, gravity: 1 });
+    this.glow.burst({ x, y: 0.6, z, count: Math.round(25 * s), color: 0xfff0a0, intensity: 4, speed: 4 * s, up: 3, size: 0.15, life: 0.3, gravity: 0 });
+    this.particles.burst({ x, y: 0.5, z, count: Math.round(30 * s), color: 0x5d4a3a, speed: 6 * s, up: 7, size: 0.16, life: 1.0 });
+    this.particles.burst({ x, y: 0.8, z, count: Math.round(14 * s), color: 0x666666, speed: 1.5, up: 1.5, size: 0.5 * s, life: 1.4, gravity: -1 });
+    this.addFx('shock', x, z, pushR, 0.35);
+    if (!this.arena.pondAt(x, z)) this.addFx('scorch', x, z, blast * 0.8, 9);
+    this.sfx(() => SFX.boom(big));
+    this.shake(big ? 0.85 : 0.6);
   }
 
-  private drop(s: Spear, x: number, z: number) {
-    s.x = x;
-    s.z = z;
-    s.state = 'falling';
-  }
-
-  private doubleHit(s: Spear) {
-    this.say(TEXT.doubleHit, 'big', s.owner.team.color);
+  multiHit(n: number, color: number) {
+    this.say(n >= 3 ? TEXT.tripleHit : TEXT.doubleHit, 'big', color);
     this.sfx(SFX.double);
     if (!this.setup.demo) this.events.slowmo(0.7);
   }
 
-  kill(b: Bloc, by: Spear | null) {
-    b.state = 'dead';
-    b.reviveProgress = 0;
-    b.dashTime = 0;
-    b.view.setDead(true);
-    b.view.hit();
-    this.particles.burst({ x: b.x, y: 0.9, z: b.z, count: 26, color: b.team.color, speed: 5, up: 5, size: 0.2 });
-    this.glow.burst({ x: b.x, y: 0.9, z: b.z, count: 14, color: 0xfff3b0, intensity: 3, speed: 6, up: 3, size: 0.09, life: 0.4, gravity: 0 });
-    this.sfx(SFX.hit);
-    if (!this.setup.demo) this.events.shake(b.human !== null ? 0.6 : 0.35);
-    if (b.holdingSpear && b.spear) {
-      b.holdingSpear = false;
-      b.spear.dirX = by ? by.dirX : 1;
-      b.spear.dirZ = by ? by.dirZ : 0;
-      this.drop(b.spear, b.x + 0.5, b.z + 0.3);
-      b.spear.y = 0.6;
-    }
-    if (b.human !== null) this.say(`P${b.human + 1} is down! A teammate can revive you`, 'small', b.team.color);
+  private addFx(kind: Fx['kind'], x: number, z: number, size: number, dur: number) {
+    const mat = kind === 'shock'
+      ? new THREE.MeshBasicMaterial({ color: 0xfff0c0, transparent: true, depthWrite: false })
+      : new THREE.MeshBasicMaterial({ color: 0x1a1410, transparent: true, depthWrite: false, opacity: 0.55 });
+    const mesh = new THREE.Mesh(kind === 'shock' ? SHOCK_GEO : SCORCH_GEO, mat);
+    mesh.position.set(x, kind === 'shock' ? 0.3 : 0.025, z);
+    mesh.scale.setScalar(kind === 'shock' ? 0.1 : size);
+    mesh.renderOrder = 1;
+    this.group.add(mesh);
+    this.fx.push({ mesh, t: 0, dur, kind, size });
   }
 
   private eaten(b: Bloc) {
     b.state = 'eaten';
     b.view.hit();
     this.sinking.push({ bloc: b, t: 0 });
-    const pond = this.arena.pondAt(b.x, b.z);
-    pond?.feed(b.x, b.z, b.team.color, !this.setup.demo);
-    if (b.holdingSpear && b.spear) {
-      b.holdingSpear = false;
-      b.spear.state = 'sinking';
-      b.spear.timer = Infinity;
-      b.spear.x = b.x; b.spear.z = b.z; b.spear.y = -2;
-    }
-    if (!this.setup.demo) this.events.shake(0.4);
-    this.say(TEXT.eaten, b.human !== null ? 'big' : 'small', b.team.color);
-    if (b.isRobot) this.eliminate(b.team);
+    this.arena.pondAt(b.x, b.z)?.feed(b.x, b.z, b.isBunny ? 0xffffff : b.team.color, !this.setup.demo);
+    if (!b.isBunny) this.weaponFor(b.weapon).onEaten(b);
+    this.shake(0.4);
+    this.say(TEXT.eaten, b.human !== null || b.isBunny ? 'big' : 'small', b.team.color);
+    if (b.isBunny) this.eliminate(b.team);
   }
 
   private updateSinking(dt: number) {
@@ -425,33 +414,14 @@ export class Match {
     }
   }
 
-  private damageRobot(r: Bloc, s: Spear) {
-    if (this.phase === 'over') return;
-    r.hp--;
-    r.view.hit();
-    r.view.setHearts(r.hp, TUNING.robot.hp);
-    this.sfx(SFX.robotHit);
-    this.glow.burst({ x: r.x, y: 1.2, z: r.z, count: 16, color: 0xffe08a, intensity: 3, speed: 5, up: 3, size: 0.08, life: 0.4, gravity: 4, dirX: -s.dirX, dirZ: -s.dirZ, spread: 2 });
-    if (!this.setup.demo) this.events.shake(0.3);
-    if (r.hp <= 0) {
-      r.state = 'gone';
-      r.view.setWreck();
-      this.sfx(SFX.robotDie);
-      this.particles.burst({ x: r.x, y: 1, z: r.z, count: 40, color: 0x6d757c, speed: 6, up: 7, size: 0.22 });
-      this.glow.burst({ x: r.x, y: 1, z: r.z, count: 40, color: 0xff9a3a, intensity: 3, speed: 7, up: 4, size: 0.14, life: 0.6, gravity: 2 });
-      if (!this.setup.demo) this.events.shake(0.9);
-      this.eliminate(r.team);
-    }
-  }
-
   private eliminate(team: TeamDef) {
     if (this.eliminated.has(team.id)) return;
     this.eliminated.add(team.id);
-    this.say(TEXT.robotDown(team.name), 'small', team.color);
+    this.say(TEXT.bunnyPoofed(team.name), 'small', team.color);
     // With 4 teams, a beaten team's blocs vanish in a puff.
     if (this.teams.length > 2) {
       for (const b of this.blocs) {
-        if (b.team !== team || b.isRobot || b.state === 'eaten' || b.state === 'gone') continue;
+        if (b.team !== team || b.isBunny || b.state === 'eaten' || b.state === 'gone') continue;
         b.state = 'gone';
         b.view.root.visible = false;
         this.particles.burst({ x: b.x, y: 0.6, z: b.z, count: 20, color: 0xffffff, speed: 3, up: 3, size: 0.2 });
@@ -464,7 +434,7 @@ export class Match {
     for (const d of this.blocs) {
       if (d.state !== 'dead') continue;
       const helper = this.blocs.find((h) =>
-        h.alive && !h.isRobot && h.team === d.team && h.revivesLeft > 0 &&
+        h.alive && !h.isBunny && h.team === d.team && h.revivesLeft > 0 &&
         Math.hypot(h.x - d.x, h.z - d.z) < R.radius);
       d.reviveProgress = helper
         ? d.reviveProgress + dt / R.time
@@ -475,6 +445,7 @@ export class Match {
         d.state = 'alive';
         d.reviveProgress = 0;
         d.shield = 1;
+        d.burn = 0;
         d.view.setDead(false);
         d.view.blink(1);
         this.sfx(SFX.revive);
@@ -487,10 +458,11 @@ export class Match {
   private checkEnd(dt: number) {
     const left = this.teams.filter((t) => !this.eliminated.has(t.id));
     if (left.length <= 1) return this.finish(left[0] ?? null);
-    // Nobody left who can throw: a draw.
-    const anyFighter = this.blocs.some((b) => b.alive && !b.isRobot && !this.eliminated.has(b.team.id));
-    this.drawTimer = anyFighter ? 0 : this.drawTimer + dt;
-    if (this.drawTimer > 2) this.finish(null);
+    // Nobody left who can fight (no fighters, or nothing left to fight with): a draw.
+    const canFight = this.blocs.some((b) => b.alive && !b.isBunny && !this.eliminated.has(b.team.id) &&
+      !(b.weapon === 'grenade' && b.ammo === 0) && !(b.weapon === 'flamethrower' && b.fuel <= 0));
+    this.drawTimer = canFight ? 0 : this.drawTimer + dt;
+    if (this.drawTimer > 2.5) this.finish(null);
   }
 
   private finish(winner: TeamDef | null) {
@@ -500,17 +472,40 @@ export class Match {
 
   // ───────────────────────── queries ─────────────────────────
 
+  threats() {
+    return [...this.weapons.values()].flatMap((w) => w.threats());
+  }
+
+  dangers() {
+    return [...this.weapons.values()].flatMap((w) => w.dangers());
+  }
+
   status(): TeamStatus[] {
     return this.teams.map((team) => {
       const mine = this.blocs.filter((b) => b.team === team);
-      const robot = mine.find((b) => b.isRobot)!;
+      const bunny = mine.find((b) => b.isBunny)!;
       return {
         team,
-        blocs: mine.filter((b) => !b.isRobot).map((b) => ({ state: b.state, human: b.human })),
-        robotHp: Math.max(0, robot.hp),
+        blocs: mine.filter((b) => !b.isBunny).map((b) => ({ state: b.state, human: b.human })),
+        bunnyHp: Math.max(0, bunny.hp),
         eliminated: this.eliminated.has(team.id),
       };
     });
+  }
+
+  players(): PlayerStatus[] {
+    return this.blocs
+      .filter((b) => b.human !== null)
+      .map((b) => ({
+        player: b.human!,
+        team: b.team,
+        weapon: b.weapon,
+        alive: b.alive,
+        weaponStatus: this.weaponFor(b.weapon).status(b),
+        dash: 1 - b.dashCooldown / TUNING.bloc.dashCooldown,
+        revives: b.revivesLeft,
+      }))
+      .sort((a, b) => a.player - b.player);
   }
 
   human(player: number) {
@@ -524,16 +519,35 @@ export class Match {
       if (b.state !== 'eaten') b.view.root.position.set(b.x, b.view.root.position.y, b.z);
       if (b.human !== null) b.view.setCooldown(1 - b.dashCooldown / TUNING.bloc.dashCooldown);
       b.view.update(dt, {
-        speed: b.alive ? Math.hypot(b.vx, b.vz) : 0,
+        speed: b.alive ? Math.hypot(b.vx + b.kbX, b.vz + b.kbZ) : 0,
         yaw: b.yaw,
         dashing: b.dashTime > 0,
-        holdingSpear: b.holdingSpear,
+        // Spear and grenade leave the hand when thrown; bazooka and flamethrower stay.
+        holdingWeapon: b.armed || b.weapon === 'bazooka' || b.weapon === 'flamethrower',
       });
     }
-    for (const s of this.spears) s.updateView(dt);
+    for (const w of this.weapons.values()) w.render(dt);
+    for (let i = this.fx.length - 1; i >= 0; i--) {
+      const f = this.fx[i];
+      f.t += dt;
+      const k = f.t / f.dur;
+      const mat = f.mesh.material as THREE.MeshBasicMaterial;
+      if (f.kind === 'shock') {
+        f.mesh.scale.setScalar(0.3 + f.size * Math.sqrt(k));
+        mat.opacity = 1 - k;
+      } else {
+        mat.opacity = 0.55 * Math.min(1, (1 - k) * 3);
+      }
+      if (k >= 1) {
+        f.mesh.removeFromParent();
+        mat.dispose();
+        this.fx.splice(i, 1);
+      }
+    }
   }
 
   dispose() {
+    for (const w of this.weapons.values()) w.dispose();
     this.group.removeFromParent();
     for (const p of this.arena.ponds) p.clear();
   }

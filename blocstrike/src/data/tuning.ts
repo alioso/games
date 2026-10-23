@@ -8,10 +8,10 @@ export const TUNING = {
     dashTime: 0.16, // seconds the dash lasts
     dashCooldown: 5, // seconds before you can dash again
   },
-  robot: {
-    hp: 3, // dies at the third hit
+  bunny: {
+    hp: 3, // poofs at the third hit
     speed: 2.6,
-    radius: 0.75,
+    radius: 0.7,
   },
   revive: {
     time: 3, // seconds standing on a teammate
@@ -20,10 +20,16 @@ export const TUNING = {
   },
   teams: {
     blocsPerTeam: 3,
-    robotsPerTeam: 1,
+  },
+  rounds: {
+    toWin: 3, // best of 5
   },
   coins: {
-    perWin: 10,
+    perWin: 10, // for winning the whole match
+  },
+  /** Explosions push blocs that are close but not close enough to be hit. */
+  knockback: {
+    decay: 7, // how fast the push fades
   },
   /** Aim help: snap to an enemy if it's within this angle (degrees) of where you aim. */
   aimAssistDeg: { human: 14 },

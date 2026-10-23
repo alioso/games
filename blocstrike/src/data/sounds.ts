@@ -32,13 +32,43 @@ export const SFX = {
       synth.tone({ freq: 320 + Math.random() * 160, to: 90, dur: 0.07, type: 'square', vol: 0.18, delay: i * 0.11 });
     }
   },
-  robotHit() {
-    synth.tone({ freq: 880, to: 440, dur: 0.12, type: 'sawtooth', vol: 0.18 });
-    synth.tone({ freq: 660, to: 330, dur: 0.12, type: 'sawtooth', vol: 0.18, delay: 0.1 });
+  bunnyHit() {
+    // A little squeak.
+    synth.tone({ freq: 1400, to: 2100, dur: 0.09, type: 'sine', vol: 0.25 });
+    synth.tone({ freq: 1800, to: 1200, dur: 0.12, type: 'sine', vol: 0.2, delay: 0.08 });
   },
-  robotDie() {
-    synth.tone({ freq: 600, to: 40, dur: 1.0, type: 'sawtooth', vol: 0.25 });
-    synth.noise({ dur: 0.8, freq: 300, to: 80, q: 0.5, vol: 0.4 });
+  bunnyPoof() {
+    synth.noise({ dur: 0.5, freq: 2500, to: 600, q: 0.6, vol: 0.35 });
+    [1047, 1319, 1568, 2093].forEach((f, i) => synth.tone({ freq: f, dur: 0.25, type: 'sine', vol: 0.12, delay: 0.1 + i * 0.06 }));
+  },
+  rocket() {
+    synth.noise({ dur: 0.45, freq: 300, to: 1200, q: 0.8, vol: 0.4 });
+    synth.tone({ freq: 90, to: 50, dur: 0.2, type: 'square', vol: 0.2 });
+  },
+  boom(big = false) {
+    synth.noise({ dur: big ? 1.1 : 0.8, freq: 500, to: 50, q: 0.4, vol: big ? 0.8 : 0.6 });
+    synth.tone({ freq: big ? 90 : 120, to: 30, dur: big ? 0.8 : 0.5, type: 'sine', vol: 0.6 });
+  },
+  lob() {
+    synth.tone({ freq: 300, to: 600, dur: 0.15, type: 'triangle', vol: 0.15 });
+  },
+  bounce() {
+    synth.tone({ freq: 220, to: 180, dur: 0.06, type: 'triangle', vol: 0.15 });
+  },
+  fizzle() {
+    synth.noise({ dur: 0.7, freq: 3000, to: 800, q: 1, vol: 0.25 });
+  },
+  flame() {
+    synth.noise({ dur: 0.12, freq: 700, q: 0.5, vol: 0.18 });
+  },
+  empty() {
+    synth.tone({ freq: 160, dur: 0.06, type: 'square', vol: 0.12 });
+  },
+  buy() {
+    [784, 988, 1175, 1568].forEach((f, i) => synth.tone({ freq: f, dur: 0.12, type: 'square', vol: 0.12, delay: i * 0.05 }));
+  },
+  nope() {
+    synth.tone({ freq: 200, to: 150, dur: 0.2, type: 'square', vol: 0.15 });
   },
   revive() {
     [523, 659, 784, 1047].forEach((f, i) => synth.tone({ freq: f, dur: 0.18, type: 'triangle', vol: 0.2, delay: i * 0.07 }));

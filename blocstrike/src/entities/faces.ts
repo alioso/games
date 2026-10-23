@@ -1,7 +1,8 @@
 import * as THREE from 'three';
+import type { SkinId } from '../data/blocs';
 
 // Faces are drawn on a 128×128 canvas and stuck on the front of each bloc.
-// The beginner face copies the sketch: square eyes and a "W" of teeth.
+// Each one copies the bloc shop sketch.
 
 type Painter = (g: CanvasRenderingContext2D) => void;
 
@@ -11,6 +12,7 @@ function texture(paint: Painter) {
   const g = cv.getContext('2d')!;
   g.lineJoin = 'round';
   g.lineCap = 'round';
+  g.strokeStyle = g.fillStyle = '#111';
   paint(g);
   const tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -18,30 +20,135 @@ function texture(paint: Painter) {
   return tex;
 }
 
+const teeth = (g: CanvasRenderingContext2D, x: number, y: number, w: number, n: number, h: number) => {
+  g.fillStyle = '#fff';
+  g.beginPath();
+  const step = w / n;
+  for (let i = 0; i < n; i++) {
+    g.moveTo(x + i * step, y);
+    g.lineTo(x + i * step + step / 2, y + h);
+    g.lineTo(x + (i + 1) * step, y);
+  }
+  g.fill();
+};
+
 const beginner: Painter = (g) => {
   for (const x of [26, 74]) {
     g.fillStyle = '#fff';
     g.fillRect(x, 26, 28, 28);
     g.lineWidth = 5;
-    g.strokeStyle = '#111';
     g.strokeRect(x, 26, 28, 28);
     g.fillStyle = '#111';
     g.fillRect(x + 11, 34, 12, 14);
   }
   g.fillStyle = '#111';
   g.fillRect(34, 72, 60, 30);
-  g.fillStyle = '#fff';
-  g.beginPath();
-  for (const x of [38, 58, 78]) {
-    g.moveTo(x, 72);
-    g.lineTo(x + 8, 88);
-    g.lineTo(x + 16, 72);
+  teeth(g, 38, 72, 52, 3, 16);
+};
+
+const noob: Painter = (g) => {
+  g.lineWidth = 6;
+  for (const x of [42, 82]) {
+    g.beginPath();
+    g.moveTo(x - 4, 32); g.lineTo(x - 4, 54);
+    g.moveTo(x + 6, 32); g.lineTo(x + 6, 54);
+    g.stroke();
   }
+  g.lineWidth = 7;
+  g.beginPath();
+  g.arc(64, 108, 26, Math.PI * 1.2, Math.PI * 1.8);
+  g.stroke();
+};
+
+const bronze: Painter = (g) => {
+  g.lineWidth = 5;
+  g.fillStyle = '#fff';
+  for (const [x, flip] of [[24, 1], [70, -1]] as const) {
+    g.beginPath();
+    g.moveTo(x, 44 + 6 * flip); g.lineTo(x + 34, 44 - 6 * flip); g.lineTo(x + 34, 54 - 6 * flip); g.lineTo(x, 54 + 6 * flip);
+    g.closePath();
+    g.fill();
+    g.stroke();
+  }
+  g.fillStyle = '#111';
+  g.fillRect(30, 76, 68, 26);
+  teeth(g, 32, 76, 64, 4, 20);
+};
+
+const silver: Painter = (g) => {
+  g.lineWidth = 7;
+  for (const x of [42, 86]) {
+    g.beginPath();
+    g.arc(x, 50, 13, Math.PI, 0);
+    g.stroke();
+  }
+  g.fillStyle = '#111';
+  g.beginPath();
+  g.roundRect(28, 72, 72, 32, 8);
+  g.fill();
+  teeth(g, 32, 72, 64, 5, 14);
+  g.save();
+  g.translate(0, 104);
+  g.scale(1, -1);
+  teeth(g, 32, 0, 64, 5, 12);
+  g.restore();
+};
+
+const pro: Painter = (g) => {
+  g.fillStyle = '#111';
+  g.beginPath();
+  g.roundRect(18, 30, 92, 30, 14);
+  g.fill();
+  g.fillStyle = '#5ff';
+  g.fillRect(28, 38, 26, 8);
+  g.fillRect(74, 38, 26, 8);
+  g.lineWidth = 6;
+  g.beginPath();
+  g.moveTo(40, 88);
+  g.quadraticCurveTo(64, 102, 90, 84);
+  g.stroke();
+};
+
+const gold: Painter = (g) => {
+  const star = (cx: number, cy: number, r: number) => {
+    g.beginPath();
+    for (let i = 0; i < 8; i++) {
+      const a = (i * Math.PI) / 4;
+      const rr = i % 2 ? r * 0.3 : r;
+      g.lineTo(cx + Math.sin(a) * rr, cy - Math.cos(a) * rr);
+    }
+    g.closePath();
+    g.fill();
+  };
+  g.fillStyle = '#fff';
+  star(42, 44, 20);
+  star(86, 44, 20);
+  g.fillStyle = '#111';
+  star(42, 44, 9);
+  star(86, 44, 9);
+  g.lineWidth = 6;
+  g.beginPath();
+  g.arc(64, 74, 26, 0.15 * Math.PI, 0.85 * Math.PI);
+  g.stroke();
+  g.fillStyle = '#ff5c8a';
+  g.beginPath();
+  g.ellipse(72, 102, 10, 12, 0, 0, Math.PI * 2);
   g.fill();
 };
 
+const rainbow: Painter = (g) => {
+  g.lineWidth = 7;
+  for (const x of [26, 72]) {
+    g.beginPath();
+    g.moveTo(x, 52); g.lineTo(x + 8, 34); g.lineTo(x + 16, 50); g.lineTo(x + 24, 34); g.lineTo(x + 30, 52);
+    g.stroke();
+  }
+  g.fillStyle = '#111';
+  g.fillRect(30, 72, 68, 28);
+  teeth(g, 32, 72, 64, 6, 12);
+};
+
 const dead: Painter = (g) => {
-  g.strokeStyle = '#111';
   g.lineWidth = 9;
   for (const x of [40, 88]) {
     g.beginPath();
@@ -56,25 +163,11 @@ const dead: Painter = (g) => {
   g.stroke();
 };
 
-const robot: Painter = (g) => {
-  g.fillStyle = '#101820';
-  g.beginPath();
-  g.roundRect(8, 14, 112, 92, 16);
-  g.fill();
-  g.fillStyle = '#fff';
-  g.fillRect(26, 36, 24, 18);
-  g.fillRect(78, 36, 24, 18);
-  g.fillRect(36, 74, 56, 8);
-};
+const PAINTERS: Record<SkinId | 'dead', Painter> = { beginner, noob, bronze, silver, pro, gold, rainbow, dead };
 
 const cache = new Map<string, THREE.CanvasTexture>();
-const get = (k: string, p: Painter) => {
-  if (!cache.has(k)) cache.set(k, texture(p));
-  return cache.get(k)!;
-};
 
-export const FACES = {
-  beginner: () => get('beginner', beginner),
-  dead: () => get('dead', dead),
-  robot: () => get('robot', robot),
-};
+export function faceTexture(id: SkinId | 'dead') {
+  if (!cache.has(id)) cache.set(id, texture(PAINTERS[id]));
+  return cache.get(id)!;
+}

@@ -71,8 +71,29 @@ html, body {
 .pip.dead::after { content: '✕'; color: #fff; font-size: 2vh; position: absolute; }
 .pip.eaten, .pip.gone { background: #222831; opacity: 0.6; }
 
-.robot { display: flex; align-items: center; gap: 0.2vw; color: #fff; font-size: 2.2vh; }
-.bot { margin-right: 0.3vw; }
+.bunny { display: flex; align-items: center; gap: 0.2vw; color: #fff; font-size: 2.2vh; }
+.bun { margin-right: 0.3vw; }
+.rounds { display: flex; gap: 0.35vh; margin-left: 0.4vw; }
+.round { width: 1.3vh; height: 1.3vh; border-radius: 50%; border: 0.25vh solid rgba(255, 255, 255, 0.6); }
+.round.won { background: #ffcc33; border-color: #ffcc33; box-shadow: 0 0 0.8vh #ffcc33; }
+
+/* Player cards along the bottom */
+.cards { position: absolute; bottom: 1.5vh; left: 1.5vw; right: 1.5vw; display: flex; justify-content: space-between; pointer-events: none; }
+.pcard {
+  display: flex; align-items: center; gap: 0.8vw;
+  padding: 0.8vh 1vw; border-radius: 1.4vh;
+  background: rgba(20, 26, 38, 0.6); border: 0.35vh solid var(--c);
+  color: #fff; font-size: 1.9vh; min-width: 22vh;
+}
+.pcard.p2 { margin-left: auto; }
+.pcard.down { opacity: 0.5; }
+.pcard .who { font: 2.4vh 'Bungee', sans-serif; color: var(--c); }
+.pcard .wpn { flex: 1; display: flex; flex-direction: column; gap: 0.5vh; }
+.pcard .bar { height: 0.8vh; border-radius: 99px; background: rgba(255, 255, 255, 0.2); overflow: hidden; }
+.pcard .bar div { height: 100%; background: #ffcc33; border-radius: 99px; transition: width 0.15s; }
+.pcard .extras { display: flex; gap: 0.4vw; font-size: 2.2vh; }
+.pcard .extras span { opacity: 0.25; filter: grayscale(1); }
+.pcard .extras span.on { opacity: 1; filter: none; }
 .heart { color: rgba(255, 255, 255, 0.25); }
 .heart.on { color: #ff4d6d; text-shadow: 0 0 0.6vh #ff4d6d; }
 
@@ -128,7 +149,7 @@ html, body {
 
 .hint {
   position: absolute;
-  bottom: 1.5vh;
+  bottom: 9vh;
   left: 50%;
   transform: translateX(-50%);
   color: #fff;
@@ -245,3 +266,31 @@ h2 {
   margin: 1vh 0;
 }
 .earned { font: 3.4vh 'Bungee', sans-serif; text-align: center; color: #d69e00; }
+
+/* ───────── Shop ───────── */
+
+.shop-top { display: flex; align-items: center; justify-content: space-between; }
+.shop-top h2 { margin: 0; }
+.row { display: flex; gap: 1vh; }
+.row > button { flex: 1; }
+.panel button.selected { background: #dbeaff; border-color: #2f7dff; box-shadow: 0 0.6vh 0 #2f7dff; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(15vh, 1fr)); gap: 1.2vh; }
+.panel button.card {
+  flex-direction: column; gap: 0.3vh; padding: 0.8vh; font-size: 1.9vh;
+  justify-content: flex-start;
+}
+.card img { width: 100%; aspect-ratio: 1; object-fit: contain; border-radius: 1vh; background: radial-gradient(circle at 50% 40%, #ffffff, #e3ecf7); }
+.card .title { font-weight: 600; line-height: 1.1; text-align: center; }
+.card .tag { font-size: 1.6vh; font-weight: 700; padding: 0.2vh 0.8vh; border-radius: 99px; }
+.card .tag.price { background: #ffcc33; color: var(--ink); }
+.card .tag.locked { background: #e0e0e0; color: #888; }
+.card .tag.owned { background: #e3f2fd; color: #1565c0; }
+.card .tag.equipped { background: #2f7dff; color: #fff; }
+.card .tag.confirm { background: #ff3b3b; color: #fff; animation: pulse 0.6s infinite alternate; }
+@keyframes pulse { to { transform: scale(1.08); } }
+.shop-flash {
+  position: absolute; top: 45%; left: 50%; transform: translate(-50%, -50%);
+  font: 6vh 'Bungee', sans-serif; color: #fff; -webkit-text-stroke: 0.25vh #1d2433; text-shadow: 0 0.7vh 0 #ffcc33;
+  animation: banner-in 0.3s cubic-bezier(0.2, 1.6, 0.4, 1), banner-out 0.4s 0.8s ease-in forwards; pointer-events: none;
+}
+.score { font: 5vh 'Bungee', sans-serif; text-align: center; color: var(--ink); }

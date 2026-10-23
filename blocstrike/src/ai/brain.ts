@@ -1,14 +1,25 @@
 import type { Controls } from '@engine/input';
-import { chance, rand, segmentCircle, type V2 } from '@engine/math';
+import { chance, clamp, rand, segmentCircle, type V2 } from '@engine/math';
 import type { Bloc } from '../entities/bloc';
 import type { Match } from '../match';
 import type { AI_LEVELS } from '../data/tuning';
-import { SPEAR } from '../data/weapons';
+import { BAZOOKA, FLAMETHROWER, GRENADE, SPEAR, type WeaponId } from '../data/weapons';
+import { inFlames } from '../weapons/flamethrower';
 
 type Level = (typeof AI_LEVELS)['normal'];
 
-const IDEAL_RANGE = 6;
-const THROW_RANGE = 10.5;
+/** How each weapon wants to be used: where to stand, when it can fire. */
+const STYLE: Record<WeaponId, { ideal: number; max: number; min: number; speed: number }> = {
+  spear: { ideal: 6, max: 10.5, min: 0, speed: SPEAR.speed },
+  bazooka: { ideal: 7, max: 12, min: BAZOOKA.blastRadius + 1.2, speed: BAZOOKA.speed },
+  grenade: { ideal: 7.5, max: GRENADE.maxDistance - 0.5, min: GRENADE.blastRadius + 1.2, speed: 12 },
+  flamethrower: { ideal: FLAMETHROWER.range - 1.3, max: FLAMETHROWER.range - 0.3, min: 0, speed: Infinity },
+};
+
+const NO: Controls = {
+  moveX: 0, moveZ: 0, aimX: 0, aimZ: 0, hasAim: false,
+  attack: false, attackPressed: false, attackReleased: false, dashPressed: false, pausePressed: false,
+};
 
 /** A computer player. It produces the same Controls a human would, so it plays by the same rules. */
 export class Brain {
@@ -26,45 +37,59 @@ export class Brain {
   private targetT = 0;
   private wander: V2 | null = null;
   private wanderT = 0;
+  /** Grenade: how long to hold the button for the current throw. */
+  private chargeGoal = -1;
 
   constructor(private me: Bloc, private match: Match, private level: Level) {
     this.reactNeed = level.reaction * rand(0.7, 1.4);
   }
 
   think(dt: number): Controls {
-    const c: Controls = {
-      moveX: 0, moveZ: 0, aimX: 0, aimZ: 0, hasAim: false,
-      attack: false, attackPressed: false, attackReleased: false, dashPressed: false, pausePressed: false,
-    };
+    const c: Controls = { ...NO };
     this.repath -= dt;
-    this.watchForSpears(c);
-    if (this.me.isRobot) this.robot(dt, c);
+    this.watchThreats(c);
+    if (this.me.isBunny) this.bunny(dt, c);
     else this.fighter(dt, c);
     return c;
   }
 
   // ───────────── shared ─────────────
 
-  private watchForSpears(c: Controls) {
+  private watchThreats(c: Controls) {
     const me = this.me;
-    for (const s of this.match.spears) {
-      if (s.state !== 'flying' || s.owner === me) continue;
+    for (const s of this.match.threats()) {
+      if (s.owner === me) continue;
       const rx = me.x - s.x, rz = me.z - s.z;
       const along = rx * s.dirX + rz * s.dirZ;
-      if (along < 0 || along > SPEAR.speed * 0.8) continue;
+      if (along < 0 || along > s.speed * 0.8) continue;
       const side = rx * s.dirZ - rz * s.dirX;
-      if (Math.abs(side) > me.radius + 0.5) continue;
-      if (me.seenSpears.has(s.id)) continue;
-      me.seenSpears.add(s.id);
-      if (!chance(me.isRobot ? Math.max(0.5, this.level.dodgeChance) : this.level.dodgeChance)) continue;
-      // Step out sideways, away from the spear's line.
+      // Rockets explode, so give them a wider berth.
+      if (Math.abs(side) > me.radius + 0.5 + (s.speed < 18 ? 1 : 0)) continue;
+      if (me.seen.has(s.id)) continue;
+      me.seen.add(s.id);
+      if (!chance(me.isBunny ? Math.max(0.5, this.level.dodgeChance) : this.level.dodgeChance)) continue;
+      // Step out sideways, away from the line it's flying along.
       const sign = side >= 0 ? 1 : -1;
-      this.dodgeX = s.dirZ * sign;
-      this.dodgeZ = -s.dirX * sign;
-      if (this.blockedAhead(this.dodgeX, this.dodgeZ)) { this.dodgeX *= -1; this.dodgeZ *= -1; }
-      this.dodgeT = 0.35;
-      if (!me.isRobot && me.dashCooldown <= 0 && chance(0.6)) c.dashPressed = true;
+      this.startDodge(s.dirZ * sign, -s.dirX * sign, c);
     }
+    // Run from grenades about to go off (if we notice them).
+    for (const d of this.match.dangers()) {
+      const dx = me.x - d.x, dz = me.z - d.z, l = Math.hypot(dx, dz);
+      if (l > d.r || me.seen.has(d.id)) continue;
+      me.seen.add(d.id);
+      if (!chance(me.isBunny ? Math.max(0.5, this.level.dodgeChance) : this.level.dodgeChance)) continue;
+      this.startDodge(l > 0.01 ? dx / l : 1, l > 0.01 ? dz / l : 0, c);
+      this.dodgeT = 0.7;
+    }
+  }
+
+  private startDodge(x: number, z: number, c: Controls) {
+    if (this.blockedAhead(x, z)) { x = -x; z = -z; }
+    if (this.blockedAhead(x, z)) return;
+    this.dodgeX = x;
+    this.dodgeZ = z;
+    this.dodgeT = 0.4;
+    if (!this.me.isBunny && this.me.dashCooldown <= 0 && chance(0.6)) c.dashPressed = true;
   }
 
   private blockedAhead(dx: number, dz: number, d = 1.1) {
@@ -90,22 +115,25 @@ export class Brain {
     c.moveZ = (dz / l) * slow;
   }
 
-  // ───────────── robot ─────────────
+  private dodging(dt: number, c: Controls) {
+    if (this.dodgeT <= 0) return false;
+    this.dodgeT -= dt;
+    c.moveX = this.dodgeX;
+    c.moveZ = this.dodgeZ;
+    return true;
+  }
 
-  private robot(dt: number, c: Controls) {
+  // ───────────── bunny ─────────────
+
+  private bunny(dt: number, c: Controls) {
     const me = this.me;
-    if (this.dodgeT > 0) {
-      this.dodgeT -= dt;
-      c.moveX = this.dodgeX;
-      c.moveZ = this.dodgeZ;
-      return;
-    }
+    if (this.dodging(dt, c)) return;
     const { halfW, halfD } = this.match.arena.def;
     const nav = this.match.arena.nav;
-    const threat = this.match.blocs.find((b) => b.alive && !b.isRobot && b.team !== me.team && Math.hypot(b.x - me.x, b.z - me.z) < 8);
+    const threat = this.match.blocs.find((b) => b.alive && !b.isBunny && b.team !== me.team && Math.hypot(b.x - me.x, b.z - me.z) < 8);
     this.wanderT -= dt;
     if (threat && this.wanderT < 2.5) {
-      // Shuffle away from danger.
+      // Hop away from danger.
       const dx = me.x - threat.x, dz = me.z - threat.z, l = Math.hypot(dx, dz) || 1;
       this.wander = nav.nearestFree(me.x + (dx / l) * 4, me.z + (dz / l) * 4);
       this.wanderT = 3;
@@ -124,44 +152,34 @@ export class Brain {
 
   // ───────────── fighter ─────────────
 
+  /** Can this bloc still attack at all? */
+  private hasWeapon() {
+    const me = this.me;
+    if (me.weapon === 'grenade') return me.ammo > 0;
+    if (me.weapon === 'flamethrower') return me.fuel > 0;
+    return true;
+  }
+
   private fighter(dt: number, c: Controls) {
     const me = this.me;
+    const style = STYLE[me.weapon];
     const target = this.pickTarget(dt);
-    const canSee = target ? this.clearShot(target) : false;
     const dist = target ? Math.hypot(target.x - me.x, target.z - me.z) : Infinity;
+    const canSee = target ? this.clearShot(target) : false;
 
-    // Throwing, whatever we're walking towards.
-    if (target && me.holdingSpear && canSee && dist < THROW_RANGE) {
-      this.react += dt;
-      const [ax, az] = this.aimAt(target, dist);
-      c.hasAim = true;
-      c.aimX = ax;
-      c.aimZ = az;
-      if (this.react >= this.reactNeed) {
-        c.attackPressed = true;
-        this.react = 0;
-        this.reactNeed = this.level.reaction * rand(0.7, 1.4);
-      }
-    } else {
-      this.react = Math.max(0, this.react - dt);
-    }
+    this.attack(dt, c, target, dist, canSee);
 
-    if (this.dodgeT > 0) {
-      this.dodgeT -= dt;
-      c.moveX = this.dodgeX;
-      c.moveZ = this.dodgeZ;
-      return;
-    }
+    if (this.dodging(dt, c)) return;
 
-    // 1. Go get our spear back.
-    const spear = me.spear;
-    if (!me.holdingSpear && spear) {
+    // 1. Spear: go get it back.
+    if (me.weapon === 'spear' && !me.armed && me.spear) {
+      const spear = me.spear;
       if (spear.state === 'grounded' || spear.state === 'stuck' || spear.state === 'falling') {
         this.goTo({ x: spear.x, z: spear.z }, c, true);
       } else if (spear.state === 'flying') {
         this.goTo({ x: spear.x + spear.dirX * 2, z: spear.z + spear.dirZ * 2 }, c);
       } else {
-        this.retreat(c);
+        this.guard(c);
       }
       this.separate(c);
       return;
@@ -178,22 +196,30 @@ export class Brain {
       }
     }
 
+    // 3. Nothing left to fight with: stand guard between our bunny and the enemy.
+    if (!this.hasWeapon()) {
+      this.guard(c);
+      this.separate(c);
+      return;
+    }
+
     if (!target) return;
 
-    // 3. Fight: close in until we have a clear shot, then strafe at a comfortable range.
-    if (!canSee || dist > IDEAL_RANGE + 3.5) {
+    // 4. Fight: close in until we have a clear shot, then strafe at the weapon's favourite range.
+    if (!canSee || dist > style.max) {
       this.goTo({ x: target.x, z: target.z }, c);
-    } else {
+    } else if (!(me.weapon === 'grenade' && this.chargeGoal >= 0)) {
       this.strafeT -= dt;
       if (this.strafeT <= 0) { this.strafe *= -1; this.strafeT = rand(0.8, 2.2); }
       const dx = (target.x - me.x) / dist, dz = (target.z - me.z) / dist;
-      const approach = dist > IDEAL_RANGE + 1 ? 0.6 : dist < IDEAL_RANGE - 2 ? -0.6 : 0;
-      let mx = -dz * this.strafe * 0.8 + dx * approach;
-      let mz = dx * this.strafe * 0.8 + dz * approach;
+      const approach = dist > style.ideal + 1 ? 0.7 : dist < style.ideal - 1.5 ? -0.6 : 0;
+      const sideways = me.weapon === 'flamethrower' ? 0.3 : 0.8;
+      let mx = -dz * this.strafe * sideways + dx * approach;
+      let mz = dx * this.strafe * sideways + dz * approach;
       if (this.blockedAhead(mx, mz)) {
         this.strafe *= -1;
-        mx = -dz * this.strafe * 0.8 + dx * approach;
-        mz = dx * this.strafe * 0.8 + dz * approach;
+        mx = -dz * this.strafe * sideways + dx * approach;
+        mz = dx * this.strafe * sideways + dz * approach;
         if (this.blockedAhead(mx, mz)) { mx = 0; mz = 0; }
       }
       c.moveX = mx;
@@ -202,21 +228,88 @@ export class Brain {
     this.separate(c);
   }
 
+  /** Aim and fire, whatever we're walking towards. */
+  private attack(dt: number, c: Controls, target: Bloc | null, dist: number, canSee: boolean) {
+    const me = this.me;
+    const style = STYLE[me.weapon];
+
+    // A grenade throw in progress: keep holding until it's charged enough, then let go.
+    if (me.weapon === 'grenade' && this.chargeGoal >= 0) {
+      if (target) this.aim(c, target, dist, style.speed);
+      if (me.charge >= 0 && me.charge < this.chargeGoal) c.attack = true;
+      else if (me.charge >= 0) { c.attackReleased = true; this.chargeGoal = -1; }
+      else this.chargeGoal = -1;
+      return;
+    }
+
+    if (me.weapon === 'flamethrower') {
+      if (!target || me.fuel <= 0) return;
+      this.aim(c, target, dist, style.speed);
+      // Only flame when the target is in reach and no teammate is in the way.
+      const friendInWay = this.match.blocs.some((b) => b !== me && b.alive && b.team === me.team && inFlames(this.match, me, b));
+      if (dist < style.max && canSee && !friendInWay) {
+        this.react += dt;
+        if (this.react >= this.reactNeed * 0.4) c.attack = true;
+      } else {
+        this.react = 0;
+      }
+      return;
+    }
+
+    const ready = me.weapon === 'grenade' ? me.ammo > 0 : me.armed;
+    if (!target || !ready || !canSee || dist > style.max || dist < style.min || this.friendNear(target, me.weapon)) {
+      this.react = Math.max(0, this.react - dt);
+      return;
+    }
+    this.react += dt;
+    this.aim(c, target, dist, style.speed);
+    if (this.react < this.reactNeed) return;
+    this.react = 0;
+    this.reactNeed = this.level.reaction * rand(0.7, 1.4) * (me.weapon === 'spear' ? 1 : 1.3);
+    c.attackPressed = true;
+    c.attack = true;
+    if (me.weapon === 'grenade') {
+      // Pick how long to hold for the distance (computer players misjudge it a little too).
+      const want = clamp(dist + rand(-1, 1) * this.level.aimError * 0.06, GRENADE.minDistance, GRENADE.maxDistance);
+      this.chargeGoal = ((want - GRENADE.minDistance) / (GRENADE.maxDistance - GRENADE.minDistance)) * GRENADE.fullChargeTime;
+    }
+  }
+
+  /** Splash weapons: don't fire if a teammate is near the target. */
+  private friendNear(target: Bloc, weapon: WeaponId) {
+    if (weapon !== 'bazooka' && weapon !== 'grenade') return false;
+    const r = (weapon === 'bazooka' ? BAZOOKA.blastRadius : GRENADE.blastRadius) + 0.6;
+    return this.match.blocs.some((b) => b !== this.me && b.alive && b.team === this.me.team && Math.hypot(b.x - target.x, b.z - target.z) < r);
+  }
+
+  private aim(c: Controls, t: Bloc, dist: number, speed: number) {
+    const me = this.me;
+    const lead = speed === Infinity ? 0 : (dist / speed) * this.level.leadTarget;
+    const px = t.x + t.vx * lead, pz = t.z + t.vz * lead;
+    const err = ((rand(-1, 1) * this.level.aimError) * Math.PI) / 180;
+    const a = Math.atan2(px - me.x, pz - me.z) + err;
+    c.hasAim = true;
+    c.aimX = Math.sin(a);
+    c.aimZ = Math.cos(a);
+  }
+
   private pickTarget(dt: number) {
     const me = this.me;
     this.targetT -= dt;
     if (this.target && this.target.alive && this.targetT > 0) return this.target;
-    const myRobot = this.match.blocs.find((b) => b.isRobot && b.team === me.team);
+    const myBunny = this.match.blocs.find((b) => b.isBunny && b.team === me.team);
     let best: Bloc | null = null, bestScore = Infinity;
     for (const b of this.match.blocs) {
       if (!b.alive || b.team === me.team) continue;
       let score = Math.hypot(b.x - me.x, b.z - me.z);
-      // Robots are the goal, but blocs shoot back: go for the robot when it's close or few defenders are left.
-      if (b.isRobot) {
+      // The bunny is the goal, but blocs shoot back: go for it when it's close or few defenders are left.
+      if (b.isBunny) {
         const defenders = this.defenders(b);
         score = score * 2 - (score < 5 ? 8 : 0) - (defenders === 0 ? 20 : defenders === 1 ? 6 : 0);
+        // Grenades are few but take 2 hearts: save them for the bunny.
+        if (me.weapon === 'grenade') score -= 12;
       }
-      if (myRobot?.alive && !b.isRobot && Math.hypot(b.x - myRobot.x, b.z - myRobot.z) < 7) score -= 8;
+      if (myBunny?.alive && !b.isBunny && Math.hypot(b.x - myBunny.x, b.z - myBunny.z) < 7) score -= 8;
       score += rand(0, 3);
       if (score < bestScore) { bestScore = score; best = b; }
     }
@@ -225,13 +318,14 @@ export class Brain {
     return best;
   }
 
-  private defenders(robot: Bloc) {
-    return this.match.blocs.filter((b) => b.alive && !b.isRobot && b.team === robot.team).length;
+  private defenders(bunny: Bloc) {
+    return this.match.blocs.filter((b) => b.alive && !b.isBunny && b.team === bunny.team).length;
   }
 
-  /** No obstacle and no teammate between us and the target. */
+  /** No obstacle and no teammate between us and the target (grenades fly over things). */
   private clearShot(t: Bloc) {
     const me = this.me;
+    if (me.weapon === 'grenade') return true;
     for (const o of this.match.arena.obstacles) {
       if (segmentCircle(me.x, me.z, t.x, t.z, o.x, o.z, o.r + 0.1) !== null) return false;
     }
@@ -244,19 +338,22 @@ export class Brain {
     return true;
   }
 
-  private aimAt(t: Bloc, dist: number): [number, number] {
+  /** Stand between our bunny and the closest enemy. */
+  private guard(c: Controls) {
     const me = this.me;
-    const lead = (dist / SPEAR.speed) * this.level.leadTarget;
-    const px = t.x + t.vx * lead, pz = t.z + t.vz * lead;
-    const err = ((rand(-1, 1) * this.level.aimError) * Math.PI) / 180;
-    const a = Math.atan2(px - me.x, pz - me.z) + err;
-    return [Math.sin(a), Math.cos(a)];
-  }
-
-  /** Without a spear: back off towards our own robot. */
-  private retreat(c: Controls) {
-    const robot = this.match.blocs.find((b) => b.isRobot && b.team === this.me.team);
-    if (robot) this.goTo({ x: robot.x, z: robot.z + 2 }, c);
+    const bunny = this.match.blocs.find((b) => b.isBunny && b.team === me.team && b.alive);
+    if (!bunny) return;
+    const enemy = this.match.blocs
+      .filter((b) => b.alive && !b.isBunny && b.team !== me.team)
+      .sort((a, b) => Math.hypot(a.x - bunny.x, a.z - bunny.z) - Math.hypot(b.x - bunny.x, b.z - bunny.z))[0];
+    let gx = bunny.x, gz = bunny.z + 1.5;
+    if (enemy) {
+      const dx = enemy.x - bunny.x, dz = enemy.z - bunny.z, l = Math.hypot(dx, dz) || 1;
+      gx = bunny.x + (dx / l) * 2;
+      gz = bunny.z + (dz / l) * 2;
+    }
+    const goal = this.match.arena.nav.nearestFree(gx, gz);
+    if (Math.hypot(goal.x - me.x, goal.z - me.z) > 0.6) this.goTo(goal, c);
   }
 
   /** Don't bunch up with teammates. */

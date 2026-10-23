@@ -19,7 +19,7 @@ await wait(4200);
 await page.evaluate(() => {
   const m = window.blocstrike.match;
   const p1 = m.human(0);
-  const reds = m.blocs.filter((b) => b.team.id === 1 && !b.isRobot);
+  const reds = m.blocs.filter((b) => b.team.id === 1 && !b.isBunny);
   for (const b of m.blocs) if (b !== p1) m.brains.delete(b); // everyone stands still
   p1.x = -10; p1.z = -4; p1.aimX = 1; p1.aimZ = 0;
   reds[0].x = -6; reds[0].z = -4;
@@ -28,7 +28,7 @@ await page.evaluate(() => {
 await page.keyboard.press('Space');
 await wait(450);
 await page.screenshot({ path: out + 'm1-double.png' });
-const dbl = await page.evaluate(() => window.blocstrike.match.blocs.filter((b) => b.team.id === 1 && !b.isRobot).map((b) => b.state));
+const dbl = await page.evaluate(() => window.blocstrike.match.blocs.filter((b) => b.team.id === 1 && !b.isBunny).map((b) => b.state));
 console.log('after double throw, reds:', dbl.join(','));
 
 // 2. Walk P1 into the pond.

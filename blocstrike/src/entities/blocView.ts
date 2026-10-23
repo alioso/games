@@ -3,12 +3,16 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { damp, dampAngle } from '@engine/math';
 import { makeCanvasSprite, makeProgressRing } from '@engine/fx';
 import type { TeamDef } from '../data/teams';
-import { FACES } from './faces';
-import { makeSpearModel } from './spearModel';
+import { skinById, type SkinId } from '../data/blocs';
+import type { HatId } from '../data/hats';
+import type { WeaponId } from '../data/weapons';
+import { faceTexture } from './faces';
+import { makeHat, makeSkinTop } from './hats';
+import { makeHeldWeapon } from './weaponModels';
 
 const HIP = 0.42;
 const BLOC_BOX = new RoundedBoxGeometry(1, 1, 1, 3, 0.14);
-const ROBOT_BOX = new RoundedBoxGeometry(1.25, 1.15, 1.05, 3, 0.12);
+const BAND_BOX = new RoundedBoxGeometry(1.03, 0.17, 1.03, 2, 0.06);
 const LEG = new THREE.BoxGeometry(0.24, HIP, 0.26).translate(0, -HIP / 2, 0);
 const FOOT = new THREE.BoxGeometry(0.28, 0.1, 0.36).translate(0, -HIP + 0.05, 0.05);
 
@@ -16,23 +20,49 @@ export interface ViewState {
   speed: number; // current ground speed, drives the walk cycle
   yaw: number;
   dashing: boolean;
-  holdingSpear: boolean;
+  holdingWeapon: boolean;
 }
 
-/** Everything you see of one bloc or robot. The simulation lives in Bloc; this only draws it. */
-export class BlocView {
+/** What Match needs from anything it draws: blocs and bunnies. */
+export interface ActorView {
+  readonly root: THREE.Group;
+  update(dt: number, s: ViewState): void;
+  snapYaw(yaw: number): void;
+  hit(): void;
+  throwAnim(): void;
+  setHearts(hp: number, max: number): void;
+  setDead(dead: boolean): void;
+  setRevive(progress: number): void;
+  setCooldown(fraction: number): void;
+  blink(seconds: number): void;
+  poof(): void;
+}
+
+export interface BlocLook {
+  skin: SkinId;
+  hat: HatId | null;
+}
+
+/** Where each weapon sits in the bloc's hand. */
+const GRIP: Record<WeaponId, { pos: [number, number, number]; tilt: number }> = {
+  spear: { pos: [0.62, 0.05, 0.1], tilt: -0.25 },
+  bazooka: { pos: [0.58, 0.3, 0], tilt: 0 },
+  grenade: { pos: [0.62, -0.12, 0.3], tilt: 0 },
+  flamethrower: { pos: [0.6, -0.1, 0.15], tilt: 0 },
+};
+
+/** Everything you see of one bloc. The simulation lives in Bloc; this only draws it. */
+export class BlocView implements ActorView {
   readonly root = new THREE.Group();
   private body = new THREE.Group();
   private legs: THREE.Group[] = [];
   private bodyMat: THREE.MeshStandardMaterial;
-  private face: THREE.Mesh;
-  private faceMat: THREE.MeshStandardMaterial | THREE.MeshBasicMaterial;
-  private spear: THREE.Group | null = null;
-  private antennaBall: THREE.Mesh | null = null;
+  private faceMat: THREE.MeshStandardMaterial;
+  private top: THREE.Object3D | null;
+  private held: THREE.Group;
   private ring;
   private reviveRing;
   private label: ReturnType<typeof makeCanvasSprite> | null = null;
-  private hearts: ReturnType<typeof makeCanvasSprite> | null = null;
   private walk = 0;
   private yaw = 0;
   private squash = 0;
@@ -40,76 +70,58 @@ export class BlocView {
   private deadT = -1;
   private time = Math.random() * 10;
   private blinkUntil = 0;
+  private rainbow: boolean;
 
-  constructor(readonly kind: 'bloc' | 'robot', readonly team: TeamDef, humanLabel: string | null) {
-    const isRobot = kind === 'robot';
+  constructor(readonly team: TeamDef, humanLabel: string | null, readonly look: BlocLook, weapon: WeaponId) {
+    const skin = skinById(look.skin);
+    this.rainbow = skin.id === 'rainbow';
     this.root.add(this.body);
 
-    this.bodyMat = new THREE.MeshStandardMaterial(
-      isRobot
-        ? { color: 0xa9b3bd, metalness: 0.75, roughness: 0.32 }
-        : { color: team.color, roughness: 0.5 },
-    );
-    const box = new THREE.Mesh(isRobot ? ROBOT_BOX : BLOC_BOX, this.bodyMat);
-    box.castShadow = true;
-    box.receiveShadow = true;
+    this.bodyMat = new THREE.MeshStandardMaterial({ color: skin.color ?? team.color, metalness: skin.metal, roughness: skin.rough });
+    const box = new THREE.Mesh(BLOC_BOX, this.bodyMat);
+    box.castShadow = box.receiveShadow = true;
     this.body.add(box);
 
-    const faceSize = isRobot ? 0.95 : 0.84;
-    if (isRobot) {
-      // Glowing screen face; colour above 1 so the bloom picks it up.
-      this.faceMat = new THREE.MeshBasicMaterial({
-        map: FACES.robot(),
-        color: new THREE.Color(team.color).multiplyScalar(2.4),
-      });
-    } else {
-      this.faceMat = new THREE.MeshStandardMaterial({ map: FACES.beginner(), transparent: true, alphaTest: 0.4, roughness: 0.6 });
-    }
-    this.face = new THREE.Mesh(new THREE.PlaneGeometry(faceSize, faceSize * (isRobot ? 0.82 : 1)), this.faceMat);
-    this.face.position.z = (isRobot ? 0.525 : 0.5) + 0.006;
-    this.body.add(this.face);
-
-    if (isRobot) {
-      const band = new THREE.Mesh(
-        new THREE.BoxGeometry(1.29, 0.16, 1.09),
-        new THREE.MeshStandardMaterial({ color: team.color, roughness: 0.4 }),
-      );
-      band.position.y = -0.38;
+    // Skinned blocs wear a stripe in the team colour so you can still tell the teams apart.
+    if (skin.color !== null) {
+      const band = new THREE.Mesh(BAND_BOX, new THREE.MeshStandardMaterial({ color: team.color, roughness: 0.45 }));
+      band.position.y = -0.3;
       this.body.add(band);
-      const stalk = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.45), this.bodyMat);
-      stalk.position.y = 0.78;
-      this.body.add(stalk);
-      this.antennaBall = new THREE.Mesh(
-        new THREE.SphereGeometry(0.1, 12, 8),
-        new THREE.MeshBasicMaterial({ color: new THREE.Color(team.color).multiplyScalar(3) }),
-      );
-      this.antennaBall.position.y = 1.02;
-      this.body.add(this.antennaBall);
     }
 
-    const legMat = new THREE.MeshStandardMaterial({ color: isRobot ? 0x5d666e : team.dark, roughness: 0.6, metalness: isRobot ? 0.5 : 0 });
+    this.faceMat = new THREE.MeshStandardMaterial({ map: faceTexture(skin.id), transparent: true, alphaTest: 0.4, roughness: 0.6 });
+    const face = new THREE.Mesh(new THREE.PlaneGeometry(0.84, 0.84), this.faceMat);
+    face.position.z = 0.506;
+    this.body.add(face);
+
+    this.top = look.hat ? makeHat(look.hat) : makeSkinTop(skin.id);
+    if (this.top) {
+      this.top.position.y = 0.48;
+      this.top.scale.setScalar(look.hat ? 0.95 : 1);
+      this.body.add(this.top);
+    }
+
+    const legMat = new THREE.MeshStandardMaterial({ color: team.dark, roughness: 0.6 });
     for (const side of [-1, 1]) {
       const pivot = new THREE.Group();
-      pivot.position.set(side * (isRobot ? 0.32 : 0.24), HIP, 0);
+      pivot.position.set(side * 0.24, HIP, 0);
       const leg = new THREE.Mesh(LEG, legMat);
       const foot = new THREE.Mesh(FOOT, legMat);
       leg.castShadow = foot.castShadow = true;
       pivot.add(leg, foot);
-      if (isRobot) pivot.scale.set(1.3, 1, 1.2);
       this.root.add(pivot);
       this.legs.push(pivot);
     }
 
-    if (!isRobot) {
-      this.spear = makeSpearModel(team.color);
-      this.spear.position.set(0.62, 0.05, 0.1);
-      this.spear.rotation.x = -0.25;
-      this.body.add(this.spear);
-    }
+    this.held = makeHeldWeapon(weapon, team.color);
+    const grip = GRIP[weapon];
+    this.held.position.set(...grip.pos);
+    this.held.rotation.x = grip.tilt;
+    this.body.add(this.held);
 
     // Team ring on the ground. For human players it also shows the dash cooldown.
     const human = humanLabel !== null;
-    this.ring = makeProgressRing(isRobot ? 0.85 : 0.62, isRobot ? 1.0 : human ? 0.82 : 0.74, team.color);
+    this.ring = makeProgressRing(0.62, human ? 0.82 : 0.74, team.color);
     this.ring.mesh.position.y = 0.03;
     this.ring.opacity = human ? 1 : 0.55;
     this.root.add(this.ring.mesh);
@@ -135,38 +147,21 @@ export class BlocView {
         g.textBaseline = 'middle';
         g.fillText(humanLabel, w / 2, (h - 14) / 2 + 2);
       });
-      this.label.sprite.position.y = 2.15;
+      this.label.sprite.position.y = look.hat ? 2.7 : 2.15;
       this.root.add(this.label.sprite);
     }
-    if (isRobot) {
-      this.hearts = makeCanvasSprite(192, 64, 0.45);
-      this.hearts.sprite.position.y = 2.25;
-      this.root.add(this.hearts.sprite);
-    }
   }
 
-  setHearts(hp: number, max: number) {
-    this.hearts?.draw((g, w, h) => {
-      const size = 44, gap = 10;
-      const x0 = (w - (size * max + gap * (max - 1))) / 2;
-      for (let i = 0; i < max; i++) {
-        const x = x0 + i * (size + gap) + size / 2, y = h / 2;
-        g.fillStyle = i < hp ? '#ff4d6d' : 'rgba(0,0,0,0.35)';
-        g.strokeStyle = '#fff';
-        g.lineWidth = 4;
-        g.beginPath();
-        g.moveTo(x, y + 16);
-        g.bezierCurveTo(x - 26, y - 2, x - 14, y - 22, x, y - 9);
-        g.bezierCurveTo(x + 14, y - 22, x + 26, y - 2, x, y + 16);
-        g.fill();
-        g.stroke();
-      }
-    });
-  }
-
-  /** Snap facing (used when spawning). */
   snapYaw(yaw: number) {
     this.yaw = yaw;
+  }
+
+  /** Standing still, no ring or weapon: for shop pictures. */
+  pose() {
+    this.ring.mesh.visible = false;
+    this.held.visible = false;
+    this.body.position.y = HIP + 0.5;
+    return this.root;
   }
 
   hit() {
@@ -178,14 +173,20 @@ export class BlocView {
     this.squash = 0.35;
   }
 
+  setHearts() {}
+
+  poof() {}
+
   setDead(dead: boolean) {
     this.deadT = dead ? 0 : -1;
     for (const l of this.legs) l.visible = !dead;
-    if (this.kind === 'bloc') {
-      (this.faceMat as THREE.MeshStandardMaterial).map = dead ? FACES.dead() : FACES.beginner();
-      this.faceMat.needsUpdate = true;
+    if (this.top) this.top.visible = !dead;
+    this.faceMat.map = faceTexture(dead ? 'dead' : this.look.skin);
+    this.faceMat.needsUpdate = true;
+    if (!dead) {
+      this.squash = 0.6;
+      this.body.rotation.x = 0;
     }
-    if (!dead) this.squash = 0.6;
     this.reviveRing.mesh.visible = false;
   }
 
@@ -202,17 +203,6 @@ export class BlocView {
     this.blinkUntil = this.time + seconds;
   }
 
-  setWreck() {
-    this.bodyMat.color.set(0x3a3f44);
-    (this.faceMat as THREE.MeshBasicMaterial).color.set(0x222222);
-    if (this.antennaBall) this.antennaBall.visible = false;
-    if (this.hearts) this.hearts.sprite.visible = false;
-    this.ring.mesh.visible = false;
-    for (const l of this.legs) l.rotation.z = 0.5 * Math.sign(l.position.x);
-    this.body.rotation.z = 0.25;
-    this.deadT = 0;
-  }
-
   update(dt: number, s: ViewState) {
     this.time += dt;
     this.yaw = dampAngle(this.yaw, s.yaw, 16, dt);
@@ -220,22 +210,17 @@ export class BlocView {
     this.squash = damp(this.squash, 0, 10, dt);
     this.flash = Math.max(0, this.flash - dt * 4);
     this.bodyMat.emissive.setScalar(this.flash * 0.9);
-
-    if (this.antennaBall) this.antennaBall.visible = this.deadT < 0 && Math.sin(this.time * 5) > -0.3;
-    if (this.spear) this.spear.visible = s.holdingSpear && this.deadT < 0;
+    if (this.rainbow) this.bodyMat.color.setHSL((this.time * 0.25) % 1, 0.85, 0.55);
+    this.held.visible = s.holdingWeapon && this.deadT < 0;
     this.root.visible = this.time > this.blinkUntil || Math.sin(this.time * 30) > 0;
 
     if (this.deadT >= 0) {
+      // Squashed flat on the ground: the coloured remains a teammate can revive.
       this.deadT += dt;
-      if (this.kind === 'bloc') {
-        // Squashed flat on the ground: the coloured remains a teammate can revive.
-        const k = Math.min(1, this.deadT * 6);
-        this.body.position.y = THREE.MathUtils.lerp(HIP + 0.5, 0.17, k);
-        this.body.scale.set(1 + 0.25 * k, 1 + 0.25 * k, 1 - 0.7 * k);
-        this.body.rotation.x = -Math.PI / 2 * k * 0.98;
-      } else {
-        this.body.position.y = HIP + 0.4;
-      }
+      const k = Math.min(1, this.deadT * 6);
+      this.body.position.y = THREE.MathUtils.lerp(HIP + 0.5, 0.17, k);
+      this.body.scale.set(1 + 0.25 * k, 1 + 0.25 * k, 1 - 0.7 * k);
+      this.body.rotation.x = -Math.PI / 2 * k * 0.98;
       this.ring.mesh.visible = false;
       return;
     }
@@ -249,11 +234,7 @@ export class BlocView {
     this.legs[1].rotation.x = -swing;
     const bob = Math.abs(Math.sin(this.walk)) * 0.08 * moving + Math.sin(this.time * 2.2) * 0.015;
     const sq = this.squash;
-    this.body.position.y = HIP + (this.kind === 'robot' ? 0.575 : 0.5) + bob + sq * 0.1;
+    this.body.position.y = HIP + 0.5 + bob + sq * 0.1;
     this.body.scale.set(1 - sq * 0.25, 1 + sq * 0.35, 1 - sq * 0.25);
-  }
-
-  dispose() {
-    this.root.removeFromParent();
   }
 }

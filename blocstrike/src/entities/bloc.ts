@@ -1,6 +1,8 @@
 import { TUNING } from '../data/tuning';
 import type { TeamDef } from '../data/teams';
-import { BlocView } from './blocView';
+import { FLAMETHROWER, GRENADE, type WeaponId } from '../data/weapons';
+import { BlocView, type ActorView, type BlocLook } from './blocView';
+import { BunnyView } from './bunnyView';
 import type { Spear } from './spear';
 
 /** alive → dead (remains on the ground, can be revived) ; eaten/gone = out for good. */
@@ -10,11 +12,14 @@ let nextId = 1;
 
 export class Bloc {
   readonly id = nextId++;
-  readonly view: BlocView;
+  readonly view: ActorView;
   x: number;
   z: number;
   vx = 0;
   vz = 0;
+  /** Push from explosions, added on top of walking. */
+  kbX = 0;
+  kbZ = 0;
   yaw: number;
   /** Unit direction the bloc aims/throws in. */
   aimX: number;
@@ -23,8 +28,19 @@ export class Bloc {
   hp: number;
   readonly radius: number;
   readonly speed: number;
+
+  // Weapon state. Only the fields for the team's weapon are used.
   spear: Spear | null = null;
-  holdingSpear = false;
+  /** Spear in hand / rocket loaded / grenade in hand / flamethrower ready. */
+  armed = true;
+  reload = 0; // bazooka: seconds until the next rocket
+  ammo: number = GRENADE.perPlayer; // grenades left
+  charge = -1; // grenade: seconds the throw button has been held (-1 = not charging)
+  fuel: number = FLAMETHROWER.fuel;
+  firing = false; // flamethrower on
+  /** Seconds spent in someone's flames. */
+  burn = 0;
+
   dashCooldown = 0;
   dashTime = 0;
   dashX = 0;
@@ -34,15 +50,17 @@ export class Bloc {
   reviveProgress = 0;
   /** Seconds of protection after being revived. */
   shield = 0;
-  /** Spear ids this AI already decided to dodge or not. */
-  readonly seenSpears = new Set<number>();
+  /** Projectile ids this AI already decided to dodge or not. */
+  readonly seen = new Set<number>();
 
   constructor(
-    readonly kind: 'bloc' | 'robot',
+    readonly kind: 'bloc' | 'bunny',
     readonly team: TeamDef,
     x: number,
     z: number,
     readonly human: number | null,
+    readonly weapon: WeaponId,
+    look: BlocLook = { skin: 'beginner', hat: null },
   ) {
     this.x = x;
     this.z = z;
@@ -50,21 +68,23 @@ export class Bloc {
     this.aimX = faceX;
     this.aimZ = 0;
     this.yaw = Math.atan2(faceX, 0);
-    const robot = kind === 'robot';
-    this.hp = robot ? TUNING.robot.hp : 1;
-    this.radius = robot ? TUNING.robot.radius : TUNING.bloc.radius;
-    this.speed = robot ? TUNING.robot.speed : TUNING.bloc.speed;
-    this.view = new BlocView(kind, team, human !== null ? `P${human + 1}` : null);
+    const bunny = kind === 'bunny';
+    this.hp = bunny ? TUNING.bunny.hp : 1;
+    this.radius = bunny ? TUNING.bunny.radius : TUNING.bloc.radius;
+    this.speed = bunny ? TUNING.bunny.speed : TUNING.bloc.speed;
+    this.view = bunny
+      ? new BunnyView(team)
+      : new BlocView(team, human !== null ? `P${human + 1}` : null, look, weapon);
     this.view.root.position.set(x, 0, z);
     this.view.snapYaw(this.yaw);
-    if (robot) this.view.setHearts(this.hp, this.hp);
+    if (bunny) this.view.setHearts(this.hp, this.hp);
   }
 
   get alive() {
     return this.state === 'alive';
   }
 
-  get isRobot() {
-    return this.kind === 'robot';
+  get isBunny() {
+    return this.kind === 'bunny';
   }
 }
