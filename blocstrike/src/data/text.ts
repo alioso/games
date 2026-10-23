@@ -1,0 +1,25 @@
+// All words shown in the game, in one place so they're easy to change or translate.
+
+export const TEXT = {
+  title: 'BLOCSTRIKE',
+  play: 'Play',
+  controls: 'Controls',
+  settings: 'Settings',
+  back: 'Back',
+  start: 'Start match',
+  resume: 'Resume',
+  quit: 'Quit to menu',
+  playAgain: 'Play again',
+  menu: 'Menu',
+  paused: 'Paused',
+  coins: 'bloccoins',
+  doubleHit: 'DOUBLE HIT!',
+  fight: 'FIGHT!',
+  draw: "IT'S A DRAW!",
+  wins: (team: string) => `${team.toUpperCase()} TEAM WINS!`,
+  robotDown: (team: string) => `${team} robot destroyed!`,
+  eaten: 'CHOMP!',
+  revived: 'REVIVED!',
+  pressKey: 'Press a key…',
+  hint: 'WASD move · Space throw · Shift dash · Esc pause · F fullscreen',
+};

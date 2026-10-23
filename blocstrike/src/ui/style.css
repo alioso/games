@@ -1,0 +1,247 @@
+:root {
+  --safe: 0px; /* TV safe margin, set from settings */
+  --ink: #1d2433;
+  --paper: #fffdf6;
+  --accent: #ffcc33;
+  font-family: 'Fredoka', system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #3d7a2c;
+  user-select: none;
+  cursor: default;
+}
+
+#app canvas { display: block; }
+
+#ui {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  padding: var(--safe);
+}
+
+.hidden { display: none !important; }
+
+/* ───────── HUD ───────── */
+
+.hud { position: absolute; inset: var(--safe); }
+
+.teams {
+  position: absolute;
+  top: 1.2vh;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 1.2vw;
+}
+
+.team {
+  display: flex;
+  align-items: center;
+  gap: 0.8vw;
+  padding: 0.6vh 1vw;
+  border-radius: 1.4vh;
+  background: rgba(20, 26, 38, 0.55);
+  border: 0.35vh solid var(--c);
+  backdrop-filter: blur(4px);
+}
+.team.out { opacity: 0.4; filter: grayscale(1); }
+
+.blocs { display: flex; gap: 0.4vw; }
+
+.pip {
+  width: 3.2vh;
+  height: 3.2vh;
+  border-radius: 0.6vh;
+  background: var(--c);
+  box-shadow: inset 0 -0.4vh 0 rgba(0, 0, 0, 0.25);
+  display: grid;
+  place-items: center;
+  font: 1.2vh 'Bungee', sans-serif;
+  color: #fff;
+}
+.pip.dead { background: #59606b; position: relative; }
+.pip.dead::after { content: '✕'; color: #fff; font-size: 2vh; position: absolute; }
+.pip.eaten, .pip.gone { background: #222831; opacity: 0.6; }
+
+.robot { display: flex; align-items: center; gap: 0.2vw; color: #fff; font-size: 2.2vh; }
+.bot { margin-right: 0.3vw; }
+.heart { color: rgba(255, 255, 255, 0.25); }
+.heart.on { color: #ff4d6d; text-shadow: 0 0 0.6vh #ff4d6d; }
+
+.vs { font: 2.6vh 'Bungee', sans-serif; color: #fff; text-shadow: 0 0.3vh 0 rgba(0, 0, 0, 0.4); }
+
+.banners {
+  position: absolute;
+  top: 26%;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1vh;
+}
+
+.banner {
+  --c: #ffcc33;
+  font-family: 'Bungee', sans-serif;
+  color: #fff;
+  text-align: center;
+  animation: banner-in 0.35s cubic-bezier(0.2, 1.6, 0.4, 1) both, banner-out 0.4s ease-in forwards;
+}
+.banner.big {
+  font-size: 9vh;
+  -webkit-text-stroke: 0.25vh #1d2433;
+  text-shadow: 0 0.7vh 0 var(--c), 0 1.2vh 2vh rgba(0, 0, 0, 0.4);
+  animation-delay: 0s, 1.2s;
+}
+.banner.small {
+  font-size: 2.6vh;
+  padding: 0.7vh 1.6vw;
+  border-radius: 1vh;
+  background: var(--c);
+  box-shadow: 0 0.5vh 0 rgba(0, 0, 0, 0.25);
+  animation-delay: 0s, 2.2s;
+}
+
+@keyframes banner-in { from { transform: scale(0.3); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes banner-out { to { transform: translateY(-2vh); opacity: 0; } }
+
+.countdown {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font: 22vh 'Bungee', sans-serif;
+  color: #fff;
+  -webkit-text-stroke: 0.4vh #1d2433;
+  text-shadow: 0 1.2vh 0 #ffcc33;
+}
+.countdown.pop { animation: banner-in 0.4s cubic-bezier(0.2, 1.6, 0.4, 1); }
+
+.hint {
+  position: absolute;
+  bottom: 1.5vh;
+  left: 50%;
+  transform: translateX(-50%);
+  color: #fff;
+  font-size: 1.8vh;
+  padding: 0.6vh 1.2vw;
+  border-radius: 1vh;
+  background: rgba(20, 26, 38, 0.5);
+  transition: opacity 1s;
+  white-space: nowrap;
+}
+.hint.fade { opacity: 0; }
+
+/* ───────── Menus ───────── */
+
+.menu {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: auto;
+  background: radial-gradient(ellipse at center, rgba(10, 20, 30, 0.15), rgba(10, 20, 30, 0.6));
+}
+
+.panel {
+  width: min(92vw, 62vh);
+  max-height: 92vh;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.1vh;
+  padding: 3vh;
+  border-radius: 3vh;
+  background: rgba(255, 253, 246, 0.94);
+  box-shadow: 0 1.4vh 0 rgba(0, 0, 0, 0.18), 0 3vh 6vh rgba(0, 0, 0, 0.35);
+  animation: banner-in 0.3s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+.panel.wide { width: min(94vw, 90vh); }
+
+.logo {
+  font: 9vh/1 'Bungee', sans-serif;
+  text-align: center;
+  color: #fff;
+  -webkit-text-stroke: 0.3vh #1d2433;
+  text-shadow: 0.5vh 0.7vh 0 #2f7dff, 1vh 1.4vh 0 #ff3b3b;
+  margin: 1vh 0 2vh;
+  letter-spacing: 0.3vh;
+}
+.panel:has(.logo) { background: transparent; box-shadow: none; width: min(92vw, 70vh); }
+
+h2 {
+  margin: 0 0 1vh;
+  font: 4.5vh 'Bungee', sans-serif;
+  color: var(--ink);
+  text-align: center;
+}
+
+.panel button {
+  font: 600 2.6vh 'Fredoka', sans-serif;
+  color: var(--ink);
+  padding: 1.4vh 2vh;
+  border-radius: 1.6vh;
+  border: 0.35vh solid var(--ink);
+  background: #fff;
+  box-shadow: 0 0.6vh 0 var(--ink);
+  cursor: pointer;
+  transition: transform 0.08s, background 0.1s;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1vw;
+}
+.panel button.primary { background: var(--accent); font-family: 'Bungee', sans-serif; font-size: 3vh; }
+.panel button:focus-visible, .panel button:focus, .panel button:hover {
+  outline: none;
+  background: #e9f3ff;
+  transform: translateY(-0.3vh) scale(1.02);
+}
+.panel button.primary:focus, .panel button.primary:hover { background: #ffe066; }
+.panel button.option { justify-content: space-between; }
+.panel button.option .value { color: #2f7dff; font-weight: 700; }
+.panel button.option.disabled { opacity: 0.4; }
+.panel button.rebind { padding: 1vh 2vh; font-size: 2.2vh; }
+.panel button.rebind .key {
+  min-width: 6vh;
+  padding: 0.3vh 1vh;
+  border-radius: 0.8vh;
+  background: var(--ink);
+  color: #fff;
+  text-align: center;
+}
+.panel button.waiting .key { background: #ff3b3b; }
+
+.text { font-size: 2.1vh; color: #4a5468; text-align: center; line-height: 1.4; }
+.text b { color: var(--ink); }
+.panel:has(.logo) .text { color: #fff; text-shadow: 0 0.2vh 0.4vh rgba(0, 0, 0, 0.6); }
+
+.coins {
+  align-self: center;
+  font: 2.6vh 'Bungee', sans-serif;
+  color: var(--ink);
+  background: var(--accent);
+  padding: 0.6vh 2vh;
+  border-radius: 99px;
+  border: 0.35vh solid var(--ink);
+  box-shadow: 0 0.5vh 0 var(--ink);
+}
+
+.result-title {
+  font: 7vh/1.1 'Bungee', sans-serif;
+  text-align: center;
+  color: #fff;
+  -webkit-text-stroke: 0.3vh #1d2433;
+  text-shadow: 0 0.8vh 0 var(--c);
+  margin: 1vh 0;
+}
+.earned { font: 3.4vh 'Bungee', sans-serif; text-align: center; color: #d69e00; }

@@ -1,0 +1,61 @@
+// 🔊 SOUND EFFECTS, made by the synth (no audio files needed).
+
+import { synth } from '@engine/audio';
+
+export const SFX = {
+  throw() {
+    synth.noise({ dur: 0.22, freq: 900, to: 3000, q: 1.5, vol: 0.35 });
+  },
+  hit() {
+    synth.tone({ freq: 220, to: 60, dur: 0.25, type: 'square', vol: 0.25 });
+    synth.noise({ dur: 0.15, freq: 1800, q: 0.8, vol: 0.3 });
+  },
+  pop() {
+    synth.tone({ freq: 600, to: 120, dur: 0.18, type: 'triangle', vol: 0.3 });
+  },
+  thunk() {
+    synth.tone({ freq: 140, to: 70, dur: 0.12, type: 'triangle', vol: 0.35 });
+    synth.noise({ dur: 0.06, freq: 2500, q: 2, vol: 0.15 });
+  },
+  pickup() {
+    synth.tone({ freq: 520, dur: 0.08, type: 'square', vol: 0.12 });
+    synth.tone({ freq: 780, dur: 0.1, type: 'square', vol: 0.12, delay: 0.06 });
+  },
+  dash() {
+    synth.noise({ dur: 0.18, freq: 400, to: 1600, q: 2, vol: 0.25 });
+  },
+  splash() {
+    synth.noise({ dur: 0.5, freq: 700, to: 200, q: 0.7, vol: 0.45 });
+  },
+  chomp() {
+    for (let i = 0; i < 6; i++) {
+      synth.tone({ freq: 320 + Math.random() * 160, to: 90, dur: 0.07, type: 'square', vol: 0.18, delay: i * 0.11 });
+    }
+  },
+  robotHit() {
+    synth.tone({ freq: 880, to: 440, dur: 0.12, type: 'sawtooth', vol: 0.18 });
+    synth.tone({ freq: 660, to: 330, dur: 0.12, type: 'sawtooth', vol: 0.18, delay: 0.1 });
+  },
+  robotDie() {
+    synth.tone({ freq: 600, to: 40, dur: 1.0, type: 'sawtooth', vol: 0.25 });
+    synth.noise({ dur: 0.8, freq: 300, to: 80, q: 0.5, vol: 0.4 });
+  },
+  revive() {
+    [523, 659, 784, 1047].forEach((f, i) => synth.tone({ freq: f, dur: 0.18, type: 'triangle', vol: 0.2, delay: i * 0.07 }));
+  },
+  double() {
+    [392, 523, 659, 784].forEach((f, i) => synth.tone({ freq: f, dur: 0.14, type: 'square', vol: 0.14, delay: i * 0.05 }));
+  },
+  beep(high = false) {
+    synth.tone({ freq: high ? 880 : 440, dur: high ? 0.4 : 0.15, type: 'square', vol: 0.15 });
+  },
+  win() {
+    [523, 659, 784, 1047, 784, 1047].forEach((f, i) => synth.tone({ freq: f, dur: 0.22, type: 'triangle', vol: 0.22, delay: i * 0.12 }));
+  },
+  lose() {
+    [392, 330, 262, 196].forEach((f, i) => synth.tone({ freq: f, dur: 0.3, type: 'triangle', vol: 0.2, delay: i * 0.18 }));
+  },
+  ui() {
+    synth.tone({ freq: 660, dur: 0.05, type: 'square', vol: 0.08 });
+  },
+};
