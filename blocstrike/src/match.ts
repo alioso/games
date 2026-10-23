@@ -490,11 +490,13 @@ export class Match {
     const R = TUNING.revive;
     for (const d of this.blocs) {
       if (d.state !== 'dead') continue;
-      const helper = this.blocs.find((h) =>
-        h.alive && !h.isBunny && h.team === d.team && h.revivesLeft > 0 &&
-        Math.hypot(h.x - d.x, h.z - d.z) < R.radius);
+      // Any teammate standing on the body can revive, the bunny too (and faster).
+      const helpers = this.blocs.filter((h) =>
+        h.alive && h.team === d.team && h.revivesLeft > 0 &&
+        Math.hypot(h.x - d.x, h.z - d.z) < R.radius + (h.isBunny ? 0.25 : 0));
+      const helper = helpers.find((h) => h.isBunny) ?? helpers[0];
       d.reviveProgress = helper
-        ? d.reviveProgress + dt / R.time
+        ? d.reviveProgress + dt / (helper.isBunny ? R.bunnyTime : R.time)
         : Math.max(0, d.reviveProgress - dt / R.time);
       d.view.setRevive(d.reviveProgress);
       if (helper && d.reviveProgress >= 1) {

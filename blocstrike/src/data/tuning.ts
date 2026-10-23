@@ -15,6 +15,7 @@ export const TUNING = {
   },
   revive: {
     time: 3, // seconds standing on a teammate
+    bunnyTime: 2, // bunnies revive faster
     perPlayer: 1, // how many times each player can revive someone
     radius: 0.9, // how close you must stand
   },

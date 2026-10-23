@@ -132,6 +132,15 @@ export class Brain {
     const nav = this.match.arena.nav;
     const threat = this.match.blocs.find((b) => b.alive && !b.isBunny && b.team !== me.team && Math.hypot(b.x - me.x, b.z - me.z) < 8);
     this.wanderT -= dt;
+    // A fallen teammate: hop over and revive them, unless an enemy is right here.
+    const body = me.revivesLeft > 0 ? this.match.blocs
+      .filter((b) => b.state === 'dead' && b.team === me.team)
+      .sort((a, b) => Math.hypot(a.x - me.x, a.z - me.z) - Math.hypot(b.x - me.x, b.z - me.z))[0] : undefined;
+    const closeThreat = threat && Math.hypot(threat.x - me.x, threat.z - me.z) < 4;
+    if (body && !closeThreat) {
+      this.goTo({ x: body.x, z: body.z }, c, true);
+      return;
+    }
     if (threat && this.wanderT < 2.5) {
       // Hop away from danger.
       const dx = me.x - threat.x, dz = me.z - threat.z, l = Math.hypot(dx, dz) || 1;

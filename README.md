@@ -19,14 +19,14 @@ Then press **F** for fullscreen.
 
 ## Blocstrike
 
-Blue vs Red, 3 blocs + 1 baby bunny per team, **best of 5 rounds**. One hit knocks a bloc out; the bunny takes 3 hearts. A team loses the round when its bunny goes poof. Stand on a fallen teammate for 3 s to revive them (each player can revive once per round). Don't fall in the pond: piranhas. Winning a match gives +10 bloccoins to spend in the **Shop** (bloc skins, hats, weapons — one shared wallet for both players).
+Blue vs Red, 3 blocs + 1 baby bunny per team, **best of 5 rounds**. One hit knocks a bloc out; the bunny takes 3 hearts. A team loses the round when its bunny goes poof. Stand on a fallen teammate for 3 s to revive them; bunnies can revive too, in 2 s (everyone, bunnies included, can revive once per round). Don't fall in the pond: piranhas. Winning a match gives +10 bloccoins to spend in the **Shop** (bloc skins, hats, weapons — one shared wallet for both players).
 
 Weapons (each team picks one for the whole match, in **Play**):
 
 | | How it works |
 |---|---|
 | 🗡️ Spear | Throw, then walk over it to pick it up. Pierces up to 2 blocs. |
-| 🚀 Bazooka | Rocket with a small blast that also pushes people (into the pond!). 10 s reload. |
+| 🚀 Bazooka | Rocket with a small blast that also pushes people (into the pond!). 3 s reload. |
 | 💣 Big Grenade | **Hold** to throw further, release to throw. Bigger blast, 2 bunny hearts per hit, 5 per round. |
 | 🔥 Flamethrower | **Hold** to spray. Short range, burns teammates too. 20 s of fuel per round. |
 | 👊 Punch | When grenades or fuel run out, attack punches (hold to keep punching). Enemies only. 5 punches knock out a bloc; 2 punches take a bunny heart. Punches from teammates add up. |

@@ -23,7 +23,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     name: 'Bazooka',
     icon: '🚀',
     price: 50,
-    description: 'Rocket with a small blast. 10 seconds to reload.',
+    description: 'Rocket with a small blast. 3 seconds to reload.',
   },
   grenade: {
     id: 'grenade',
@@ -55,7 +55,7 @@ export const SPEAR = {
 export const BAZOOKA = {
   speed: 15,
   range: 15,
-  reload: 10, // seconds
+  reload: 3, // seconds
   blastRadius: 1.5, // "damage around but not too much"
   pushRadius: 3.2, // blocs in here get pushed (maybe into the pond!)
   push: 9,
