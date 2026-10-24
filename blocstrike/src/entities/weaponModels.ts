@@ -60,6 +60,36 @@ export function makeHeldWeapon(id: WeaponId, teamColor: number) {
       g.position.z = 0.1;
       return g;
     }
+    case 'sword': {
+      const g = new THREE.Group();
+      const steel = mat(0xe8edf2, { metalness: 0.95, roughness: 0.15 });
+      const blade = part(new THREE.BoxGeometry(0.08, 0.025, 1.0), steel, 0, 0, 0.62);
+      g.add(blade);
+      const tip = part(new THREE.ConeGeometry(0.057, 0.2, 4), steel, 0, 0, 1.2);
+      tip.rotation.x = Math.PI / 2;
+      tip.scale.set(1, 1, 0.3);
+      g.add(tip);
+      g.add(part(new THREE.BoxGeometry(0.34, 0.07, 0.07), mat(0xd4a017, { metalness: 0.8, roughness: 0.3 }), 0, 0, 0.1));
+      const grip = part(new THREE.CylinderGeometry(0.04, 0.04, 0.24, 8), mat(teamColor), 0, 0, -0.04);
+      grip.rotation.x = Math.PI / 2;
+      g.add(grip);
+      g.add(part(new THREE.SphereGeometry(0.06, 8, 6), mat(0xd4a017, { metalness: 0.8 }), 0, 0, -0.18));
+      return g;
+    }
+    case 'machinegun': {
+      const g = new THREE.Group();
+      const gun = mat(0x2f3338, { metalness: 0.7, roughness: 0.35 });
+      g.add(part(new THREE.BoxGeometry(0.2, 0.22, 0.6), gun, 0, 0, 0));
+      for (let i = 0; i < 3; i++) {
+        const a = (i / 3) * Math.PI * 2;
+        const b = part(new THREE.CylinderGeometry(0.035, 0.035, 0.7, 6), gun, Math.cos(a) * 0.06, Math.sin(a) * 0.06, 0.6);
+        b.rotation.x = Math.PI / 2;
+        g.add(b);
+      }
+      g.add(part(new THREE.BoxGeometry(0.16, 0.18, 0.2), mat(0x556b2f), 0.16, -0.1, 0.02));
+      g.add(part(new THREE.BoxGeometry(0.08, 0.2, 0.1), mat(teamColor), 0, -0.18, -0.12));
+      return g;
+    }
     case 'flamethrower': {
       const g = new THREE.Group();
       const barrel = part(new THREE.CylinderGeometry(0.07, 0.09, 1.0, 10), mat(0x444444, { metalness: 0.7, roughness: 0.3 }), 0, 0, 0.2);

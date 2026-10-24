@@ -148,6 +148,52 @@ const rainbow: Painter = (g) => {
   teeth(g, 32, 72, 64, 6, 12);
 };
 
+const copper: Painter = (g) => {
+  for (const x of [42, 86]) {
+    g.fillStyle = '#fff';
+    g.beginPath(); g.arc(x, 44, 15, 0, Math.PI * 2); g.fill();
+    g.lineWidth = 4; g.stroke();
+    g.fillStyle = '#111';
+    g.beginPath(); g.arc(x + 3, 46, 7, 0, Math.PI * 2); g.fill();
+  }
+  g.fillStyle = '#111';
+  g.beginPath();
+  g.moveTo(30, 76); g.quadraticCurveTo(64, 116, 98, 76); g.closePath();
+  g.fill();
+  g.fillStyle = '#fff';
+  g.fillRect(40, 77, 48, 8);
+};
+
+const iron: Painter = (g) => {
+  // Rivets in the corners.
+  g.fillStyle = '#3a3f44';
+  for (const [x, y] of [[12, 12], [116, 12], [12, 116], [116, 116]]) { g.beginPath(); g.arc(x, y, 6, 0, Math.PI * 2); g.fill(); }
+  g.fillStyle = '#111';
+  g.fillRect(24, 38, 30, 12);
+  g.fillRect(74, 38, 30, 12);
+  g.fillStyle = '#ff4a2a';
+  g.fillRect(34, 41, 10, 6);
+  g.fillRect(84, 41, 10, 6);
+  g.fillStyle = '#111';
+  g.fillRect(34, 80, 60, 10);
+  g.fillStyle = '#9aa1a8';
+  for (const x of [44, 64, 84]) { g.beginPath(); g.arc(x, 85, 3, 0, Math.PI * 2); g.fill(); }
+};
+
+const chocolate: Painter = (g) => {
+  g.lineWidth = 7;
+  g.strokeStyle = '#fff3e0';
+  for (const x of [42, 86]) {
+    g.beginPath();
+    g.moveTo(x - 13, 50); g.lineTo(x, 38); g.lineTo(x + 13, 50);
+    g.stroke();
+  }
+  g.fillStyle = '#2a140a';
+  g.beginPath(); g.arc(64, 74, 24, 0.1 * Math.PI, 0.9 * Math.PI); g.closePath(); g.fill();
+  g.fillStyle = '#ff7a9a';
+  g.beginPath(); g.ellipse(64, 92, 10, 7, 0, 0, Math.PI * 2); g.fill();
+};
+
 const dead: Painter = (g) => {
   g.lineWidth = 9;
   for (const x of [40, 88]) {
@@ -163,7 +209,7 @@ const dead: Painter = (g) => {
   g.stroke();
 };
 
-const PAINTERS: Record<SkinId | 'dead', Painter> = { beginner, noob, bronze, silver, pro, gold, rainbow, dead };
+const PAINTERS: Record<SkinId | 'dead', Painter> = { beginner, noob, bronze, copper, iron, silver, pro, chocolate, gold, rainbow, dead };
 
 const cache = new Map<string, THREE.CanvasTexture>();
 

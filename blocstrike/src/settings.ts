@@ -27,10 +27,10 @@ export interface Settings {
   ownedWeapons: WeaponId[];
   /** What each player wears. */
   looks: [BlocLook, BlocLook];
-  /** Weapon picked for each player's team. */
+  /** Weapon each human player uses (computer players get random ones). */
   weapons: [WeaponId, WeaponId];
-  /** Weapon for an all-computer team. */
-  enemyWeapon: WeaponId | 'random';
+  ownedArenas: string[];
+  arena: string;
 }
 
 const KEY = 'blocstrike.v1';
@@ -51,7 +51,8 @@ const DEFAULTS: Settings = {
   ownedWeapons: ['spear'],
   looks: [{ skin: 'beginner', hat: null }, { skin: 'beginner', hat: null }],
   weapons: ['spear', 'spear'],
-  enemyWeapon: 'random',
+  ownedArenas: ['grassy-pond'],
+  arena: 'grassy-pond',
 };
 
 export const settings: Settings = loadJSON(KEY, DEFAULTS);

@@ -162,6 +162,7 @@ export class BunnyView implements ActorView {
   throwAnim() {}
   setPunches() {}
   punchAnim() {}
+  swingAnim() {}
   setDead() {}
   setRevive() {}
   setCooldown() {}

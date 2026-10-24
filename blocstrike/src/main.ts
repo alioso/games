@@ -19,7 +19,7 @@ import { BunnyView } from './entities/bunnyView';
 import { BlocView } from './entities/blocView';
 import { Thumbnailer } from '@engine/thumbnails';
 import { deviceConfig, save, settings } from './settings';
-import { ARENAS } from './data/arenas';
+import { ARENAS, arenaById } from './data/arenas';
 import { TEAMS, type TeamDef } from './data/teams';
 import { TUNING, type Difficulty } from './data/tuning';
 import { WEAPONS, WEAPON_IDS, type WeaponId } from './data/weapons';
@@ -40,22 +40,33 @@ const particles = new Particles(2000);
 const glow = new Particles(1500, true);
 scene.add(particles.mesh, glow.mesh);
 
-const arena = new Arena(ARENAS[0], particles);
-scene.add(arena.group);
+let arena: Arena;
+let cam: ArenaCamera;
 
-const cam = new ArenaCamera(renderer.camera, arena.def.halfW + 1.8, arena.def.halfD + 1.4);
-renderer.onResize = () => cam.fit();
-applySafeMargin();
+/** Switch to another arena (the menu background changes too). */
+function useArena(id: string) {
+  if (arena?.def.id === id) return;
+  match?.dispose();
+  match = null;
+  arena?.dispose();
+  arena = new Arena(arenaById(id), particles, glow);
+  scene.add(arena.group);
+  scene.background = new THREE.Color(arena.background);
+  cam = new ArenaCamera(renderer.camera, arena.def.halfW + 1.8, arena.def.halfD + 1.4);
+  applySafeMargin();
+}
+renderer.onResize = () => cam?.fit();
 synth.setVolume(settings.volume);
 
 const ui = document.getElementById('ui')!;
 const hud = new Hud(ui);
 const menus = new Menus(ui);
-const shop = new Shop(menus, () => menus.show(mainScreen()));
+const shop = new Shop(menus, () => menus.show(mainScreen()), (id) => { useArena(id); startDemo(); });
 
 type Mode = 'menu' | 'playing' | 'paused' | 'between' | 'results';
 let mode: Mode = 'menu';
 let match: Match | null = null;
+useArena(settings.arena);
 let controllers: PlayerController[] = [];
 /** The best-of-5 in progress: round wins per team. */
 let series: { setup: MatchSetup; wins: number[]; round: number } | null = null;
@@ -70,12 +81,22 @@ function applySafeMargin() {
 
 const randomWeapon = (): WeaponId => WEAPON_IDS[Math.floor(Math.random() * WEAPON_IDS.length)];
 
+/** Weapons for every bloc of both teams: humans get their pick, computer players a random one. */
+function loadouts(humans: number[], picks: WeaponId[] = []): WeaponId[][] {
+  return TEAMS.slice(0, 2).map((t) => {
+    const mine = humans.map((team, p) => (team === t.id ? p : -1)).filter((p) => p >= 0);
+    return Array.from({ length: TUNING.teams.blocsPerTeam }, (_, i) => (i < mine.length ? picks[mine[i]] : randomWeapon()));
+  });
+}
+
 // ───────── rounds & matches ─────────
 
 function newRound(setup: MatchSetup) {
   match?.dispose();
   particles.clear();
   glow.clear();
+  arena.reset();
+  arena.muted = !!setup.demo;
   const events: MatchEvents = {
     banner: (t, s, c) => hud.banner(t, s, c),
     shake: (a) => cam.shake(a),
@@ -88,22 +109,18 @@ function newRound(setup: MatchSetup) {
 }
 
 function startDemo() {
-  newRound({ humans: [], looks: [], weapons: [randomWeapon(), randomWeapon()], teamCount: 2, difficulty: 'normal', demo: true });
+  newRound({ humans: [], looks: [], loadouts: loadouts([]), teamCount: 2, difficulty: 'normal', demo: true });
 }
 
 function startGame() {
   const humans = settings.players === 2 ? [0, settings.p2Team === 'same' ? 0 : 1] : [0];
   controllers = humans.map((_, i) => new PlayerController(deviceConfig(i as 0 | 1)));
-  // Each team's weapon: the humans' picks, or the enemy setting for an all-computer team.
-  const weapons = TEAMS.slice(0, 2).map((t) => {
-    const p = humans.indexOf(t.id);
-    if (p >= 0) return settings.weapons[p];
-    return settings.enemyWeapon === 'random' ? randomWeapon() : settings.enemyWeapon;
-  });
+  useArena(settings.arena);
   const setup: MatchSetup = {
     humans,
     looks: settings.looks.map((l) => ({ ...l })),
-    weapons,
+    // Computer players keep their random weapons for the whole match.
+    loadouts: loadouts(humans, settings.weapons),
     teamCount: 2,
     difficulty: settings.difficulty,
   };
@@ -126,9 +143,9 @@ function startRound() {
 function hint() {
   const d = deviceConfig(0);
   const hold = settings.weapons[0] === 'grenade' ? ' (hold = further)' : settings.weapons[0] === 'flamethrower' ? ' (hold)' : '';
-  if (d.kind === 'gamepad') return `P1: Left stick move · Right stick aim · A attack${hold} · B dash · Start pause · F fullscreen`;
+  if (d.kind === 'gamepad') return `P1: Left stick move · Right stick aim · A attack${hold} · B jump · Start pause · F fullscreen`;
   const k = d.keys;
-  return `P1: ${[k.up, k.left, k.down, k.right].map((c) => keyName(c[0])).join('')} move · ${keyName(k.attack[0])} attack${hold} · ${keyName(k.dash[0])} dash · Esc pause · F fullscreen`;
+  return `P1: ${[k.up, k.left, k.down, k.right].map((c) => keyName(c[0])).join('')} move · ${keyName(k.attack[0])} attack${hold} · ${keyName(k.dash[0])} jump · Esc pause · F fullscreen`;
 }
 
 function roundOver(winner: TeamDef | null) {
@@ -228,8 +245,7 @@ function playScreen(): Screen {
     get: () => Math.max(0, owned.indexOf(settings.weapons[p])),
     set: (i: number) => { settings.weapons[p] = owned[i]; save(); },
   });
-  const enemyChoices: (WeaponId | 'random')[] = ['random', ...WEAPON_IDS];
-  const twoTeamsOfHumans = settings.players === 2 && settings.p2Team === 'other';
+  const arenas = ARENAS.filter((a) => settings.ownedArenas.includes(a.id));
   const items: Screen['items'] = [
     { kind: 'option', label: 'Players', values: ['1 player', '2 players'], get: () => settings.players - 1, set: (i) => { settings.players = (i + 1) as 1 | 2; save(); } },
     {
@@ -238,16 +254,14 @@ function playScreen(): Screen {
       disabled: () => settings.players === 1,
     },
     { kind: 'option', label: 'Computer players', values: ['Easy', 'Normal', 'Hard'], get: () => DIFFS.indexOf(settings.difficulty), set: (i) => { settings.difficulty = DIFFS[i]; save(); } },
-    { kind: 'option', label: 'Arena', values: [ARENAS[0].name], get: () => 0, set: () => {} },
-    weaponOption(0, twoTeamsOfHumans ? 'Blue weapon (P1)' : 'Our weapon'),
-    twoTeamsOfHumans
-      ? weaponOption(1, 'Red weapon (P2)')
-      : {
-        kind: 'option', label: 'Enemy weapon', values: enemyChoices.map((w) => (w === 'random' ? '🎲 Random' : wname(w))),
-        get: () => Math.max(0, enemyChoices.indexOf(settings.enemyWeapon)),
-        set: (i) => { settings.enemyWeapon = enemyChoices[i]; save(); },
-      },
-    { kind: 'text', html: `<b>${TEAMS[0].name}</b> vs <b>${TEAMS[1].name}</b> · ${TUNING.teams.blocsPerTeam} blocs + 1 bunny each · best of 5 rounds.<br>A team loses the round when its bunny takes 3 hits.` },
+    {
+      kind: 'option', label: 'Arena', values: arenas.map((a) => `${a.icon} ${a.name}`),
+      get: () => Math.max(0, arenas.findIndex((a) => a.id === settings.arena)),
+      set: (i) => { settings.arena = arenas[i].id; save(); useArena(settings.arena); startDemo(); },
+    },
+    weaponOption(0, 'P1 weapon'),
+    ...(settings.players === 2 ? [weaponOption(1, 'P2 weapon')] : []),
+    { kind: 'text', html: `<b>${TEAMS[0].name}</b> vs <b>${TEAMS[1].name}</b> · ${TUNING.teams.blocsPerTeam} blocs + 1 bunny each · best of 5 rounds.<br>Computer players get random weapons. A team loses the round when its bunny takes 3 hits.` },
     { kind: 'button', label: TEXT.start, primary: true, onClick: startGame },
     { kind: 'button', label: TEXT.back, onClick: () => menus.show(mainScreen()) },
   ];
@@ -268,7 +282,7 @@ function controlsScreen(): Screen {
     for (const action of KEY_ACTIONS) {
       items.push({
         kind: 'rebind',
-        label: `P${p + 1} ${action}`,
+        label: `P${p + 1} ${action === 'dash' ? 'jump' : action}`,
         value: () => keyName(settings.keys[p][action][0]),
         onCapture: (code) => { settings.keys[p][action] = [code]; save(); },
       });
@@ -345,13 +359,17 @@ loop.start();
 
 // ───────── debugging helpers (browser console) ─────────
 
-function simulate(difficulty: Difficulty = 'normal', runs = 10, weapons?: [WeaponId, WeaponId]) {
+function simulate(difficulty: Difficulty = 'normal', runs = 10, weapons?: [WeaponId, WeaponId], arenaId?: string) {
   // Plays computer-only rounds at full speed (nothing drawn) to check pacing and balance.
+  // `weapons` gives each whole team one weapon; without it everyone gets a random one.
+  if (arenaId) useArena(arenaId);
   const quiet: MatchEvents = { banner() {}, shake() {}, slowmo() {}, countdown() {}, over() {} };
   const results = [];
   for (let i = 0; i < runs; i++) {
-    const w = weapons ?? [randomWeapon(), randomWeapon()];
-    const m = new Match(arena, { humans: [], looks: [], weapons: w, teamCount: 2, difficulty, demo: true }, particles, glow, quiet);
+    const lo = weapons ? weapons.map((w) => [w, w, w]) : loadouts([]);
+    arena.reset();
+    arena.muted = true;
+    const m = new Match(arena, { humans: [], looks: [], loadouts: lo, teamCount: 2, difficulty, demo: true }, particles, glow, quiet);
     let kills = 0, revives = 0, eaten = 0;
     const before = () => m.blocs.map((b) => b.state);
     let prev = before();
@@ -366,11 +384,11 @@ function simulate(difficulty: Difficulty = 'normal', runs = 10, weapons?: [Weapo
       prev = now;
     }
     const left = m.teams.filter((t) => !m.eliminated.has(t.id));
-    results.push({ weapons: w.join(' v '), time: Math.round(m.time), winner: left.length === 1 ? left[0].name : 'draw', kills, revives, eaten, ...m.stats });
+    results.push({ weapons: lo.map((t) => t.join('+')).join(' v '), time: Math.round(m.time), winner: left.length === 1 ? left[0].name : 'draw', kills, revives, eaten, ...m.stats });
     m.dispose();
   }
-  arena.ponds.forEach((p) => p.clear());
+  arena.reset();
   return results;
 }
 
-Object.assign(window, { blocstrike: { get match() { return match; }, settings, save, startGame, goMenu, simulate, shop, debug: { Match, arena, particles, glow, BunnyView, BlocView, Thumbnailer, TEAMS } } });
+Object.assign(window, { blocstrike: { get match() { return match; }, get arena() { return arena; }, settings, save, startGame, goMenu, simulate, shop, useArena, debug: { Match, get arena() { return arena; }, particles, glow, BunnyView, BlocView, Thumbnailer, TEAMS, synth } } });

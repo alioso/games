@@ -40,7 +40,7 @@ export function makeTree(r: number, seed: number): Tree {
   return { group, foliage };
 }
 
-export function makeRock(r: number, seed: number) {
+export function makeRock(r: number, seed: number, stoneColor = 0x8d939a, mossColor = 0x6f9a4a) {
   const rand = rng(seed);
   const geo = new THREE.DodecahedronGeometry(r * 1.05, 1);
   const pos = geo.attributes.position;
@@ -59,7 +59,7 @@ export function makeRock(r: number, seed: number) {
   // Mossy tops: tint upward-facing faces green.
   const colors = new Float32Array(pos.count * 3);
   const n = geo.attributes.normal;
-  const stone = new THREE.Color(0x8d939a), moss = new THREE.Color(0x6f9a4a), c = new THREE.Color();
+  const stone = new THREE.Color(stoneColor), moss = new THREE.Color(mossColor), c = new THREE.Color();
   for (let i = 0; i < pos.count; i++) {
     c.copy(stone).lerp(moss, THREE.MathUtils.smoothstep(n.getY(i), 0.55, 0.95) * 0.8);
     colors.set([c.r, c.g, c.b], i * 3);
@@ -73,12 +73,26 @@ export function makeRock(r: number, seed: number) {
 }
 
 /** Instanced grass tufts that sway in the wind. */
-export function makeGrass(points: { x: number; z: number; s: number }[]) {
+export interface GrassLook {
+  base: [number, number, number];
+  tip: [number, number, number];
+  height: number;
+  width: number;
+}
+
+export const GRASS: Record<'meadow' | 'jungle' | 'beach' | 'ash', GrassLook> = {
+  meadow: { base: [0.18, 0.42, 0.14], tip: [0.55, 0.85, 0.3], height: 0.42, width: 0.06 },
+  jungle: { base: [0.08, 0.3, 0.1], tip: [0.3, 0.7, 0.25], height: 0.75, width: 0.14 },
+  beach: { base: [0.55, 0.55, 0.3], tip: [0.75, 0.8, 0.45], height: 0.5, width: 0.04 },
+  ash: { base: [0.15, 0.12, 0.1], tip: [0.35, 0.3, 0.22], height: 0.3, width: 0.05 },
+};
+
+export function makeGrass(points: { x: number; z: number; s: number }[], look: GrassLook = GRASS.meadow) {
   const blade = (angle: number, lean: number) => {
     const g = new THREE.BufferGeometry();
-    const w = 0.06, h = 0.42;
+    const w = look.width, h = look.height;
     g.setAttribute('position', new THREE.Float32BufferAttribute([-w, 0, 0, w, 0, 0, lean, h, 0], 3));
-    g.setAttribute('color', new THREE.Float32BufferAttribute([0.18, 0.42, 0.14, 0.18, 0.42, 0.14, 0.55, 0.85, 0.3], 3));
+    g.setAttribute('color', new THREE.Float32BufferAttribute([...look.base, ...look.base, ...look.tip], 3));
     g.computeVertexNormals();
     g.rotateY(angle);
     return g;
@@ -129,38 +143,41 @@ export function makeFlowers(points: { x: number; z: number; color: number }[]) {
   return mesh;
 }
 
-/** A hedge of bushy balls around the arena edge. */
-export function makeHedge(halfW: number, halfD: number, seed: number) {
+/** A wall of bushy balls (or sand dunes) just outside the arena outline. */
+export function makeEdgeWall(poly: [number, number][], seed: number, style: 'hedge' | 'jungle' | 'dunes', skip?: (x: number, z: number) => boolean) {
   const rand = rng(seed);
   const pts: { x: number; z: number; r: number }[] = [];
-  const pad = 1.0;
-  const along = (x0: number, z0: number, x1: number, z1: number) => {
-    const L = Math.hypot(x1 - x0, z1 - z0);
-    const n = Math.ceil(L / 0.8);
-    for (let i = 0; i <= n; i++) {
-      const t = i / n;
-      pts.push({ x: x0 + (x1 - x0) * t + rand.range(-0.15, 0.15), z: z0 + (z1 - z0) * t + rand.range(-0.15, 0.15), r: rand.range(0.55, 0.8) });
+  const out = style === 'jungle' ? 1.3 : 1.0;
+  const spacing = style === 'jungle' ? 1.0 : 0.8;
+  // Walk the outline at a fixed spacing, pushing each ball outward along the edge normal.
+  let carry = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const [ax, az] = poly[i], [bx, bz] = poly[(i + 1) % poly.length];
+    const len = Math.hypot(bx - ax, bz - az);
+    // Outward normal for a counter-clockwise outline (as seen from above, z pointing down the screen).
+    const nx = (bz - az) / len, nz = -(bx - ax) / len;
+    for (let d = carry; d < len; d += spacing) {
+      const t = d / len;
+      const x = ax + (bx - ax) * t + nx * out + rand.range(-0.15, 0.15);
+      const z = az + (bz - az) * t + nz * out + rand.range(-0.15, 0.15);
+      if (skip?.(x, z)) continue;
+      pts.push({ x, z, r: style === 'jungle' ? rand.range(0.9, 1.4) : rand.range(0.55, 0.8) });
     }
-  };
-  const W = halfW + pad, D = halfD + pad;
-  along(-W, -D, W, -D);
-  along(-W, D, W, D);
-  along(-W, -D, -W, D);
-  along(W, -D, W, D);
-  const mesh = new THREE.InstancedMesh(
-    new THREE.IcosahedronGeometry(1, 1),
-    flat(0xffffff),
-    pts.length,
-  );
+    carry = (carry - len) % spacing;
+    if (carry < 0) carry += spacing;
+  }
+  const palette = style === 'jungle' ? [0x1b5e20, 0x2e7d32, 0x145a1c, 0x236b28]
+    : style === 'dunes' ? [0xcdb07a, 0xc4a670, 0xd6ba84] : [0x2e7d32, 0x388e3c, 0x2b6e2f, 0x43a047];
+  const mesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), flat(0xffffff), pts.length);
   const d = new THREE.Object3D();
   const c = new THREE.Color();
   pts.forEach((p, i) => {
-    d.position.set(p.x, p.r * 0.55, p.z);
+    d.position.set(p.x, p.r * (style === 'dunes' ? 0.15 : 0.55), p.z);
     d.rotation.set(rand.next() * 3, rand.next() * 3, 0);
-    d.scale.set(p.r, p.r * 0.85, p.r);
+    d.scale.set(p.r, p.r * (style === 'dunes' ? 0.5 : 0.85), p.r);
     d.updateMatrix();
     mesh.setMatrixAt(i, d.matrix);
-    mesh.setColorAt(i, c.set(rand.pick([0x2e7d32, 0x388e3c, 0x2b6e2f, 0x43a047])));
+    mesh.setColorAt(i, c.set(rand.pick(palette)));
   });
   mesh.castShadow = mesh.receiveShadow = true;
   return mesh;

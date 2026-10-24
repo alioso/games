@@ -23,7 +23,7 @@ export const TEXT = {
   roundDraw: 'DRAW ROUND!',
   wins: (team: string) => `${team.toUpperCase()} TEAM WINS!`,
   bunnyPoofed: (team: string) => `${team} bunny went poof!`,
-  eaten: 'CHOMP!',
+  swallowed: { pond: 'CHOMP!', river: 'SNAP!', sea: 'GULP!', lava: 'SIZZLE!' },
   revived: 'REVIVED!',
   bought: 'BOUGHT!',
   notEnough: 'Not enough bloccoins',

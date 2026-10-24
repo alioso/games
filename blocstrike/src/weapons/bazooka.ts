@@ -57,24 +57,19 @@ export class Bazooka implements Weapon {
 
   update(dt: number) {
     const m = this.match;
-    const { halfW, halfD } = m.arena.def;
     for (let i = this.rockets.length - 1; i >= 0; i--) {
       const r = this.rockets[i];
       const step = BAZOOKA.speed * dt;
       const nx = r.x + r.dirX * step, nz = r.z + r.dirZ * step;
-      let tHit: number | null = null;
-      for (const o of m.arena.obstacles) {
-        const t = segmentCircle(r.x, r.z, nx, nz, o.x, o.z, o.r + 0.1);
-        if (t !== null && (tHit === null || t < tHit)) tHit = t;
-      }
+      let tHit: number | null = m.terrain.segmentHit(r.x, r.z, nx, nz, 0.1)?.t ?? null;
       for (const b of m.blocs) {
-        if (!b.alive || b === r.owner) continue;
+        // Jumping blocs: the rocket flies underneath.
+        if (!b.alive || b === r.owner || b.airborne) continue;
         const t = segmentCircle(r.x, r.z, nx, nz, b.x, b.z, b.radius + 0.12);
         if (t !== null && (tHit === null || t < tHit)) tHit = t;
       }
       r.traveled += step;
-      const out = Math.abs(nx) > halfW || Math.abs(nz) > halfD;
-      if (tHit !== null || out || r.traveled >= BAZOOKA.range) {
+      if (tHit !== null || r.traveled >= BAZOOKA.range) {
         const t = tHit ?? 1;
         const ex = r.x + (nx - r.x) * t, ez = r.z + (nz - r.z) * t;
         m.explode(ex, ez, BAZOOKA.blastRadius, BAZOOKA.pushRadius, BAZOOKA.push, BAZOOKA.bunnyDamage, r.owner, false);

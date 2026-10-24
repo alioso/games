@@ -94,7 +94,6 @@ export class Grenade implements Weapon {
 
   update(dt: number) {
     const m = this.match;
-    const { halfW, halfD } = m.arena.def;
     for (let i = this.nades.length - 1; i >= 0; i--) {
       const n = this.nades[i];
       n.fuse -= dt;
@@ -107,22 +106,17 @@ export class Grenade implements Weapon {
       n.x += n.vx * dt;
       n.y += n.vy * dt;
       n.z += n.vz * dt;
-      // Bounce off trees, rocks and the hedge.
-      for (const o of m.arena.obstacles) {
-        const dx = n.x - o.x, dz = n.z - o.z, d = Math.hypot(dx, dz), min = o.r + RADIUS;
-        if (d < min && n.y < 2.5) {
-          const nx = dx / d, nz = dz / d;
-          const dot = n.vx * nx + n.vz * nz;
-          if (dot < 0) { n.vx -= 1.6 * dot * nx; n.vz -= 1.6 * dot * nz; }
-          n.x = o.x + nx * min;
-          n.z = o.z + nz * min;
-        }
+      // Bounce off trees, rocks, gates and walls.
+      const o = m.terrain.pushOut(n.x, n.z, RADIUS);
+      if (o.hit && n.y < 2.5) {
+        const dot = n.vx * o.nx + n.vz * o.nz;
+        if (dot < 0) { n.vx -= 1.6 * dot * o.nx; n.vz -= 1.6 * dot * o.nz; }
+        n.x = o.x;
+        n.z = o.z;
       }
-      if (Math.abs(n.x) > halfW - RADIUS) { n.x = Math.sign(n.x) * (halfW - RADIUS); n.vx *= -0.5; }
-      if (Math.abs(n.z) > halfD - RADIUS) { n.z = Math.sign(n.z) * (halfD - RADIUS); n.vz *= -0.5; }
       if (n.y <= RADIUS) {
         n.y = RADIUS;
-        if (m.arena.pondAt(n.x, n.z)) {
+        if (m.arena.deadlyAt(n.x, n.z)) {
           // Plop. The piranhas aren't interested.
           n.sinking = true;
           n.fuse = 1.2;

@@ -1,6 +1,6 @@
 import { TUNING } from '../data/tuning';
 import type { TeamDef } from '../data/teams';
-import { FLAMETHROWER, GRENADE, type WeaponId } from '../data/weapons';
+import { FLAMETHROWER, GRENADE, MACHINEGUN, type WeaponId } from '../data/weapons';
 import { BlocView, type ActorView, type BlocLook } from './blocView';
 import { BunnyView } from './bunnyView';
 import type { Spear } from './spear';
@@ -44,10 +44,20 @@ export class Bloc {
   punches = 0;
   punchCooldown = 0;
 
-  dashCooldown = 0;
-  dashTime = 0;
-  dashX = 0;
-  dashZ = 0;
+  /** Jump (blocs) or dodge-hop (bunnies) cooldown. */
+  jumpCooldown = 0;
+  /** Seconds left bending the legs before a jump. */
+  crouch = 0;
+  /** Seconds left in the air. */
+  air = 0;
+  jumpX = 0;
+  jumpZ = 0;
+  /** Bunny dodge-hop: seconds left. */
+  hop = 0;
+  /** Machine gun: seconds of firing left before it must reload. */
+  mag: number = MACHINEGUN.fireTime;
+  /** Bullets a bunny has taken towards its next lost heart. */
+  bulletHits = 0;
   revivesLeft: number = TUNING.revive.perPlayer;
   /** On a dead bloc: how far along a teammate is in reviving it. */
   reviveProgress = 0;
@@ -85,6 +95,10 @@ export class Bloc {
 
   get alive() {
     return this.state === 'alive';
+  }
+
+  get airborne() {
+    return this.air > 0;
   }
 
   get isBunny() {

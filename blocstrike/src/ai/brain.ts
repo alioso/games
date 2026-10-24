@@ -3,8 +3,10 @@ import { chance, clamp, rand, segmentCircle, type V2 } from '@engine/math';
 import type { Bloc } from '../entities/bloc';
 import type { Match } from '../match';
 import type { AI_LEVELS } from '../data/tuning';
-import { BAZOOKA, FLAMETHROWER, GRENADE, SPEAR, type WeaponId } from '../data/weapons';
+import { BAZOOKA, FLAMETHROWER, GRENADE, MACHINEGUN, SPEAR, type WeaponId } from '../data/weapons';
+import { TUNING } from '../data/tuning';
 import { inFlames } from '../weapons/flamethrower';
+import { swordTargets } from '../weapons/sword';
 
 type Level = (typeof AI_LEVELS)['normal'];
 
@@ -14,6 +16,8 @@ const STYLE: Record<WeaponId, { ideal: number; max: number; min: number; speed: 
   bazooka: { ideal: 7, max: 12, min: BAZOOKA.blastRadius + 1.2, speed: BAZOOKA.speed },
   grenade: { ideal: 7.5, max: GRENADE.maxDistance - 0.5, min: GRENADE.blastRadius + 1.2, speed: 12 },
   flamethrower: { ideal: FLAMETHROWER.range - 1.3, max: FLAMETHROWER.range - 0.3, min: 0, speed: Infinity },
+  sword: { ideal: 1.2, max: 1.8, min: 0, speed: Infinity },
+  machinegun: { ideal: 6, max: MACHINEGUN.range - 2, min: 0, speed: MACHINEGUN.speed },
 };
 
 const NO: Controls = {
@@ -67,7 +71,7 @@ export class Brain {
       if (Math.abs(side) > me.radius + 0.5 + (s.speed < 18 ? 1 : 0)) continue;
       if (me.seen.has(s.id)) continue;
       me.seen.add(s.id);
-      if (!chance(me.isBunny ? Math.max(0.5, this.level.dodgeChance) : this.level.dodgeChance)) continue;
+      if (!chance(me.isBunny ? Math.max(TUNING.bunny.dodgeChance, this.level.dodgeChance) : this.level.dodgeChance)) continue;
       // Step out sideways, away from the line it's flying along.
       const sign = side >= 0 ? 1 : -1;
       this.startDodge(s.dirZ * sign, -s.dirX * sign, c);
@@ -77,7 +81,7 @@ export class Brain {
       const dx = me.x - d.x, dz = me.z - d.z, l = Math.hypot(dx, dz);
       if (l > d.r || me.seen.has(d.id)) continue;
       me.seen.add(d.id);
-      if (!chance(me.isBunny ? Math.max(0.5, this.level.dodgeChance) : this.level.dodgeChance)) continue;
+      if (!chance(me.isBunny ? Math.max(TUNING.bunny.dodgeChance, this.level.dodgeChance) : this.level.dodgeChance)) continue;
       this.startDodge(l > 0.01 ? dx / l : 1, l > 0.01 ? dz / l : 0, c);
       this.dodgeT = 0.7;
     }
@@ -89,7 +93,12 @@ export class Brain {
     this.dodgeX = x;
     this.dodgeZ = z;
     this.dodgeT = 0.4;
-    if (!this.me.isBunny && this.me.dashCooldown <= 0 && chance(0.6)) c.dashPressed = true;
+    // Bunnies do a quick hop; blocs just sidestep (a jump takes too long to wind up).
+    if (this.me.isBunny) {
+      c.dashPressed = true;
+      c.moveX = x;
+      c.moveZ = z;
+    }
   }
 
   private blockedAhead(dx: number, dz: number, d = 1.1) {
@@ -137,7 +146,9 @@ export class Brain {
       .filter((b) => b.state === 'dead' && b.team === me.team)
       .sort((a, b) => Math.hypot(a.x - me.x, a.z - me.z) - Math.hypot(b.x - me.x, b.z - me.z))[0] : undefined;
     const closeThreat = threat && Math.hypot(threat.x - me.x, threat.z - me.z) < 4;
-    if (body && !closeThreat) {
+    // Only if it's safe: no enemy anywhere near the fallen teammate.
+    const bodySafe = body && !this.match.blocs.some((b) => b.alive && !b.isBunny && b.team !== me.team && Math.hypot(b.x - body.x, b.z - body.z) < 8);
+    if (body && bodySafe && !closeThreat) {
       this.goTo({ x: body.x, z: body.z }, c, true);
       return;
     }
@@ -197,8 +208,8 @@ export class Brain {
       }
     }
 
-    // 3. Out of grenades or fuel: walk up and punch.
-    if (this.match.outOfAmmo(me)) {
+    // 3. Sword, or out of grenades/fuel: walk up and hit them.
+    if (me.weapon === 'sword' || this.match.outOfAmmo(me)) {
       this.brawl(dt, c, target);
       return;
     }
@@ -257,6 +268,16 @@ export class Brain {
       return;
     }
 
+    if (me.weapon === 'machinegun') {
+      // Bursts: once the target has been in sight a moment, hold the trigger while it stays there.
+      const ok = target && me.reload <= 0 && canSee && dist < style.max;
+      if (!ok) { this.react = Math.max(0, this.react - dt * 2); return; }
+      this.aim(c, target, dist, style.speed);
+      this.react += dt;
+      if (this.react >= this.reactNeed) c.attack = true;
+      return;
+    }
+
     const ready = me.weapon === 'grenade' ? me.ammo > 0 : me.armed;
     if (!target || !ready || !canSee || dist > style.max || dist < style.min || this.friendNear(target, me.weapon)) {
       this.react = Math.max(0, this.react - dt);
@@ -279,7 +300,10 @@ export class Brain {
   /** Fists only: get next to the target, face it, and punch when it's in reach. */
   private brawl(dt: number, c: Controls, target: Bloc | null) {
     const me = this.me;
-    const inReach = this.match.punchTarget(me);
+    const sword = me.weapon === 'sword' && !this.match.outOfAmmo(me);
+    const inReach = sword ? swordTargets(this.match, me, true)[0] ?? null : this.match.punchTarget(me);
+    // Never slash while a teammate is in the arc.
+    const friendInArc = sword && swordTargets(this.match, me).some((b) => b.team === me.team);
     const t = inReach ?? target;
     if (!t) return;
     const dx = t.x - me.x, dz = t.z - me.z, d = Math.hypot(dx, dz) || 1;
@@ -289,7 +313,7 @@ export class Brain {
     if (inReach) {
       // A short pause before each swing so computer players aren't punching machines.
       this.react += dt;
-      if (this.react >= this.level.reaction * 0.35) { c.attack = true; this.react = 0; }
+      if (this.react >= this.level.reaction * 0.35 && !friendInArc) { c.attack = true; this.react = 0; }
     } else {
       this.goTo({ x: t.x, z: t.z }, c, true);
       this.separate(c);
@@ -347,9 +371,7 @@ export class Brain {
   private clearShot(t: Bloc) {
     const me = this.me;
     if (me.weapon === 'grenade') return true;
-    for (const o of this.match.arena.obstacles) {
-      if (segmentCircle(me.x, me.z, t.x, t.z, o.x, o.z, o.r + 0.1) !== null) return false;
-    }
+    if (!this.match.terrain.clearLine(me.x, me.z, t.x, t.z, 0.1)) return false;
     const dist = Math.hypot(t.x - me.x, t.z - me.z);
     for (const b of this.match.blocs) {
       if (b === me || !b.alive || b.team !== me.team) continue;

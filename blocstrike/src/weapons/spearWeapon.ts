@@ -65,7 +65,7 @@ export class SpearWeapon implements Weapon {
         if (s.y <= 0.12) {
           s.y = 0.12;
           s.state = 'grounded';
-          if (m.arena.pondAt(s.x, s.z)) {
+          if (m.arena.deadlyAt(s.x, s.z)) {
             s.state = 'sinking';
             s.timer = SPEAR.waterReturn;
             m.sfx(SFX.splash);
@@ -94,24 +94,15 @@ export class SpearWeapon implements Weapon {
 
   private fly(s: Spear, dt: number) {
     const m = this.match;
-    const { halfW, halfD } = m.arena.def;
     const step = SPEAR.speed * dt;
     const nx = s.x + s.dirX * step, nz = s.z + s.dirZ * step;
-    let tStop = 1;
-    let stop: 'obstacle' | 'wall' | null = null;
-    for (const o of m.arena.obstacles) {
-      const t = segmentCircle(s.x, s.z, nx, nz, o.x, o.z, o.r + 0.05);
-      if (t !== null && t < tStop) { tStop = t; stop = 'obstacle'; }
-    }
-    const wallT = (from: number, to: number, lim: number) =>
-      Math.abs(to) > lim ? (Math.sign(to) * lim - from) / (to - from) : null;
-    for (const t of [wallT(s.x, nx, halfW), wallT(s.z, nz, halfD)]) {
-      if (t !== null && t >= 0 && t < tStop) { tStop = t; stop = 'wall'; }
-    }
+    const solid = m.terrain.segmentHit(s.x, s.z, nx, nz);
+    const tStop = solid ? solid.t : 1;
+    const stop = solid ? (solid.wall ? 'wall' : 'obstacle') : null;
 
     const hits: { b: Bloc; t: number }[] = [];
     for (const b of m.blocs) {
-      if (!b.alive || b === s.owner || s.hit.has(b.id) || b.shield > 0) continue;
+      if (!b.alive || b === s.owner || s.hit.has(b.id) || b.shield > 0 || b.airborne) continue;
       const t = segmentCircle(s.x, s.z, nx, nz, b.x, b.z, b.radius + 0.18);
       if (t !== null && t <= tStop) hits.push({ b, t });
     }
@@ -120,7 +111,7 @@ export class SpearWeapon implements Weapon {
       s.hit.add(b.id);
       const hx = s.x + (nx - s.x) * t, hz = s.z + (nz - s.z) * t;
       if (b.isBunny) {
-        m.damageBunny(b, s.owner, s.dirX, s.dirZ);
+        m.damageBunny(b, s.owner, s.dirX, s.dirZ, 1);
         this.drop(s, hx - s.dirX * 0.6, hz - s.dirZ * 0.6);
         return;
       }

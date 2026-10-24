@@ -4,14 +4,23 @@ export const TUNING = {
   bloc: {
     speed: 6.2, // units per second
     radius: 0.55,
-    dashDistance: 3.2, // "you move a little, not like crazy"
-    dashTime: 0.16, // seconds the dash lasts
-    dashCooldown: 5, // seconds before you can dash again
+    // Jump: legs bend for a moment, then a hop. In the air, spears, bullets, swords and flames pass underneath,
+    // and you can hop over narrow water or lava. Explosions still get you.
+    jumpCrouch: 1, // seconds bending the legs before take-off
+    jumpTime: 0.55, // seconds in the air
+    jumpDistance: 3.8,
+    jumpHeight: 1.5,
+    jumpCooldown: 2, // seconds after landing before the next jump
   },
   bunny: {
     hp: 3, // poofs at the third hit
     speed: 2.6,
     radius: 0.7,
+    // Quick sideways hop to dodge things flying at it.
+    hopSpeed: 8,
+    hopTime: 0.3,
+    hopCooldown: 1.2,
+    dodgeChance: 0.7,
   },
   revive: {
     time: 3, // seconds standing on a teammate

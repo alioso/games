@@ -19,7 +19,10 @@ const FOOT = new THREE.BoxGeometry(0.28, 0.1, 0.36).translate(0, -HIP + 0.05, 0.
 export interface ViewState {
   speed: number; // current ground speed, drives the walk cycle
   yaw: number;
-  dashing: boolean;
+  /** 0..1 how far the legs are bent before a jump. */
+  crouch: number;
+  /** Height off the ground while jumping. */
+  jumpY: number;
   holdingWeapon: boolean;
 }
 
@@ -34,6 +37,7 @@ export interface ActorView {
   setHearts(hp: number, max: number, cracked?: boolean): void;
   setPunches(n: number, max: number): void;
   punchAnim(): void;
+  swingAnim(): void;
   setDead(dead: boolean): void;
   setRevive(progress: number): void;
   setCooldown(fraction: number): void;
@@ -52,6 +56,8 @@ const GRIP: Record<WeaponId, { pos: [number, number, number]; tilt: number }> = 
   bazooka: { pos: [0.58, 0.3, 0], tilt: 0 },
   grenade: { pos: [0.62, -0.12, 0.3], tilt: 0 },
   flamethrower: { pos: [0.6, -0.1, 0.15], tilt: 0 },
+  sword: { pos: [0.6, -0.05, 0.15], tilt: -0.55 },
+  machinegun: { pos: [0.6, -0.05, 0.2], tilt: 0 },
 };
 
 /** Everything you see of one bloc. The simulation lives in Bloc; this only draws it. */
@@ -69,6 +75,8 @@ export class BlocView implements ActorView {
   private pips: ReturnType<typeof makeCanvasSprite>;
   private fist: THREE.Mesh;
   private fistT = 0;
+  private swingT = 0;
+  private grip: { pos: [number, number, number]; tilt: number };
   private walk = 0;
   private yaw = 0;
   private squash = 0;
@@ -120,7 +128,7 @@ export class BlocView implements ActorView {
     }
 
     this.held = makeHeldWeapon(weapon, team.color);
-    const grip = GRIP[weapon];
+    const grip = (this.grip = GRIP[weapon]);
     this.held.position.set(...grip.pos);
     this.held.rotation.x = grip.tilt;
     this.body.add(this.held);
@@ -211,6 +219,11 @@ export class BlocView implements ActorView {
     });
   }
 
+  swingAnim() {
+    this.swingT = 0.2;
+    this.squash = 0.15;
+  }
+
   punchAnim() {
     this.fistT = 0.16;
     this.squash = 0.2;
@@ -256,6 +269,18 @@ export class BlocView implements ActorView {
     this.fistT = Math.max(0, this.fistT - dt);
     this.fist.visible = this.fistT > 0 && this.deadT < 0;
     if (this.fist.visible) this.fist.position.set(0.3, -0.05, 0.55 + Math.sin((this.fistT / 0.16) * Math.PI) * 0.45);
+    // Sword slash: sweep the blade across the front, right to left.
+    this.swingT = Math.max(0, this.swingT - dt);
+    if (this.swingT > 0) {
+      const k = 1 - this.swingT / 0.2;
+      this.held.position.set(Math.cos(k * Math.PI) * 0.6, 0, 0.35 + Math.sin(k * Math.PI) * 0.35);
+      this.held.rotation.set(-0.15, 1.4 - k * 2.8, 0);
+    } else {
+      this.held.position.set(...this.grip.pos);
+      this.held.rotation.set(this.grip.tilt, 0, 0);
+    }
+    this.root.position.y = s.jumpY;
+    this.ring.mesh.position.y = 0.03 - s.jumpY;
     this.root.visible = this.time > this.blinkUntil || Math.sin(this.time * 30) > 0;
 
     if (this.deadT >= 0) {
@@ -269,16 +294,21 @@ export class BlocView implements ActorView {
       return;
     }
     this.ring.mesh.visible = true;
-    this.body.rotation.x = s.dashing ? 0.35 : 0;
+    this.body.rotation.x = s.jumpY > 0 ? -0.25 : 0;
 
     const moving = Math.min(1, s.speed / 4);
     this.walk += dt * (4 + s.speed * 1.9);
     const swing = Math.sin(this.walk) * 0.75 * moving;
-    this.legs[0].rotation.x = swing;
-    this.legs[1].rotation.x = -swing;
+    // Legs bend before a jump, and tuck up in the air.
+    const bend = Math.max(s.crouch, s.jumpY > 0 ? 0.6 : 0);
+    for (const [i, l] of this.legs.entries()) {
+      l.rotation.x = s.jumpY > 0 ? (i ? 0.5 : -0.3) : i ? -swing : swing;
+      l.scale.y = 1 - bend * 0.45;
+      l.position.y = HIP * (1 - bend * 0.45);
+    }
     const bob = Math.abs(Math.sin(this.walk)) * 0.08 * moving + Math.sin(this.time * 2.2) * 0.015;
-    const sq = this.squash;
-    this.body.position.y = HIP + 0.5 + bob + sq * 0.1;
+    const sq = this.squash - s.crouch * 0.35 + (s.crouch > 0 ? Math.sin(this.time * 50) * 0.03 : 0);
+    this.body.position.y = HIP * (1 - bend * 0.45) + 0.5 + bob + sq * 0.1;
     this.body.scale.set(1 - sq * 0.25, 1 + sq * 0.35, 1 - sq * 0.25);
   }
 }

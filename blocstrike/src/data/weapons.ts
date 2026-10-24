@@ -1,6 +1,6 @@
 // 🗡️ WEAPONS. Each team picks one weapon for the whole match.
 
-export type WeaponId = 'spear' | 'bazooka' | 'grenade' | 'flamethrower';
+export type WeaponId = 'spear' | 'sword' | 'bazooka' | 'grenade' | 'flamethrower' | 'machinegun';
 
 export interface WeaponDef {
   id: WeaponId;
@@ -17,6 +17,13 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     icon: '🗡️',
     price: 0,
     description: 'Throw it, then go get it back. Pierces up to two blocs!',
+  },
+  sword: {
+    id: 'sword',
+    name: 'Sword',
+    icon: '⚔️',
+    price: 50,
+    description: 'Always in your hand, never reloads. You have to get close!',
   },
   bazooka: {
     id: 'bazooka',
@@ -38,6 +45,13 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     icon: '🔥',
     price: 50,
     description: 'Short range, burns everyone in front (teammates too!). 20 seconds of fuel.',
+  },
+  machinegun: {
+    id: 'machinegun',
+    name: 'Machine Gun',
+    icon: '🔫',
+    price: 50,
+    description: 'Hold to spray bullets for 2 seconds, then 2 seconds to reload.',
   },
 };
 
@@ -91,4 +105,20 @@ export const PUNCH = {
   toKnockOut: 5, // punches to knock out a bloc
   perBunnyHeart: 2, // punches per bunny heart
   push: 5,
+};
+
+export const SWORD = {
+  reach: 0.95, // gap between the two bodies
+  arcDeg: 65, // half-angle of the slash in front of you
+  cooldown: 0.45, // seconds between swings
+};
+
+export const MACHINEGUN = {
+  fireTime: 2, // seconds of shooting...
+  reload: 2, // ...then seconds of reloading
+  rate: 6, // bullets per second
+  speed: 15, // slow enough to see them coming and step aside
+  range: 9,
+  spreadDeg: 12, // sprays: less accurate the further away you are
+  bulletsPerHeart: 4, // bullets to take one bunny heart
 };
