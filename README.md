@@ -34,7 +34,7 @@ Weapons (you pick yours in **Play**; computer players get random ones for the wh
 | 🚀 Bazooka | Rocket with a small blast that also pushes people (into the pond!). 3 s reload. |
 | 💣 Big Grenade | **Hold** to throw further, release to throw. Bigger blast, 2 bunny hearts per hit, 5 per round. |
 | 🔥 Flamethrower | **Hold** to spray. Short range, burns teammates too. 20 s of fuel per round. |
-| 🔫 Machine Gun | **Hold** to fire for 2 s, then 2 s to reload. Each bullet knocks out a bloc; bunnies need 4 per heart. Bullets are slow enough to dodge. |
+| 🔫 Machine Gun | **Hold** to fire for 2 s, then 2 s to reload. 2 bullets knock out a bloc; bunnies are small (bullets miss them more) and need 6 per heart. Bullets are slow enough to dodge. |
 | 👊 Punch | When grenades or fuel run out, attack punches (hold to keep punching). Enemies only. 5 punches knock out a bloc; 2 punches take a bunny heart. Punches from teammates add up. |
 
 | | Keyboard (P1) | Keyboard (P2) | Gamepad |

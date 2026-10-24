@@ -389,6 +389,7 @@ export class Match {
     }
     b.state = 'dead';
     b.punches = 0;
+    b.bulletHits = 0;
     b.view.setPunches(0, PUNCH.toKnockOut);
     b.reviveProgress = 0;
     b.crouch = b.air = 0;

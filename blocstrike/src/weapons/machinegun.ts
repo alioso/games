@@ -96,7 +96,7 @@ export class MachineGun implements Weapon {
       let victim: Bloc | null = null;
       for (const b of m.blocs) {
         if (!b.alive || b === u.owner || b.shield > 0 || b.airborne) continue;
-        const t = segmentCircle(u.x, u.z, nx, nz, b.x, b.z, b.radius + 0.05);
+        const t = segmentCircle(u.x, u.z, nx, nz, b.x, b.z, b.isBunny ? b.radius * MG.bunnyTarget : b.radius + 0.05);
         if (t !== null && t <= tEnd) { tEnd = t; victim = b; }
       }
       u.traveled += step * tEnd;
@@ -109,7 +109,11 @@ export class MachineGun implements Weapon {
             m.damageBunny(victim, u.owner, u.dirX, u.dirZ, 1);
           }
         } else {
-          m.kill(victim, u.owner, u.dirX, u.dirZ);
+          // Blocs take a couple of bullets; the dots over their head count them.
+          victim.bulletHits++;
+          victim.view.hit();
+          if (victim.bulletHits >= MG.bulletsToKnockOut) m.kill(victim, u.owner, u.dirX, u.dirZ);
+          else victim.view.setPunches(victim.bulletHits, MG.bulletsToKnockOut);
         }
       }
       if (victim || solid || u.traveled >= MG.range) {

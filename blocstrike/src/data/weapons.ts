@@ -51,7 +51,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     name: 'Machine Gun',
     icon: '🔫',
     price: 50,
-    description: 'Hold to spray bullets for 2 seconds, then 2 seconds to reload.',
+    description: 'Hold to spray bullets for 2 seconds, then 2 seconds to reload. 2 bullets knock out a bloc.',
   },
 };
 
@@ -120,5 +120,7 @@ export const MACHINEGUN = {
   speed: 15, // slow enough to see them coming and step aside
   range: 9,
   spreadDeg: 12, // sprays: less accurate the further away you are
-  bulletsPerHeart: 4, // bullets to take one bunny heart
+  bulletsToKnockOut: 2, // bullets to knock out a bloc
+  bulletsPerHeart: 6, // bullets to take one bunny heart
+  bunnyTarget: 0.5, // bunnies are small: bullets only hit the middle half of them
 };
