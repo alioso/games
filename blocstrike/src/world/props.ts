@@ -30,6 +30,14 @@ const ROCK_TINT: Record<Theme, [number, number]> = {
   volcano: [0x3b3436, 0x5a2a1c],
   jungle: [0x7d8a80, 0x4f8a3a],
   beach: [0xc9b48a, 0xb79c6c],
+  ruins: [0xb8946a, 0xa08058],
+  clouds: [0xe8eef8, 0xffffff],
+};
+
+/** Pillar stone and top colours per theme: mossy temple, sandstone, white marble. */
+const PILLAR_TINT: Partial<Record<Theme, [number, number]>> = {
+  ruins: [0xc9a774, 0xb08b5e],
+  clouds: [0xf4f4f0, 0xffd54f],
 };
 
 function jungleTree(r: number, seed: number): PropModel {
@@ -116,11 +124,12 @@ function crate(r: number, seed: number): PropModel {
   return { group: g, canopy: [], debris: 0xb5824a, top: s };
 }
 
-function pillar(r: number, seed: number): PropModel {
+function pillar(r: number, seed: number, theme: Theme): PropModel {
   const rand = rng(seed);
   const g = new THREE.Group();
-  const stone = flat(0x9e9a86);
-  const moss = flat(0x5d8a3a);
+  const [stoneColor, topColor] = PILLAR_TINT[theme] ?? [0x9e9a86, 0x5d8a3a];
+  const stone = flat(stoneColor);
+  const moss = flat(topColor);
   let y = 0;
   for (let i = 0; i < 4; i++) {
     const h = rand.range(0.45, 0.6);
@@ -148,6 +157,56 @@ function sandcastle(r: number): PropModel {
   return { group: g, canopy: [], debris: 0xe0c48a, top: 1.3 };
 }
 
+/** A chunk of old stone wall: stacked blocks, a bit broken on top. Several in a row make a wall. */
+function ruinWall(r: number, seed: number): PropModel {
+  const rand = rng(seed);
+  const g = new THREE.Group();
+  const s = r * 2;
+  let y = 0;
+  const rows = 2 + Math.floor(rand.next() * 2);
+  for (let i = 0; i < rows; i++) {
+    const h = 0.38;
+    const b = part(new THREE.BoxGeometry(s * rand.range(0.9, 1.05), h, s * 0.8), flat(rand.pick([0xc9a774, 0xbb9a68, 0xd4b386])), rand.range(-0.05, 0.05), y + h / 2, rand.range(-0.05, 0.05));
+    b.rotation.y = rand.range(-0.08, 0.08);
+    g.add(b);
+    y += h;
+  }
+  // A loose block on top, half fallen.
+  const top = part(new THREE.BoxGeometry(s * 0.5, 0.3, s * 0.6), flat(0xb08b5e), rand.range(-0.2, 0.2), y + 0.15, 0);
+  top.rotation.set(rand.range(-0.2, 0.2), rand.next(), rand.range(-0.3, 0.3));
+  g.add(top);
+  return { group: g, canopy: [], debris: 0xc9a774, top: y };
+}
+
+function cactus(r: number, seed: number): PropModel {
+  const rand = rng(seed);
+  const g = new THREE.Group();
+  const green = flat(0x4f8a3a);
+  g.add(part(new THREE.CapsuleGeometry(r * 0.55, 1.4, 4, 8), green, 0, 0.95, 0));
+  for (const s of [-1, 1]) {
+    const h = rand.range(0.7, 1.1);
+    // An elbow sticking out sideways, then the arm going up.
+    const elbow = part(new THREE.CapsuleGeometry(r * 0.3, 0.3, 4, 8), green, s * r * 0.55, h, 0);
+    elbow.rotation.z = Math.PI / 2;
+    g.add(elbow, part(new THREE.CapsuleGeometry(r * 0.35, 0.45, 4, 8), green, s * r * 0.95, h + 0.25, 0));
+  }
+  g.add(part(new THREE.SphereGeometry(0.1, 8, 6), flat(0xf06292), 0, 1.9, 0));
+  g.rotation.y = rand.next() * Math.PI;
+  return { group: g, canopy: [], debris: 0x4f8a3a, top: 1.8 };
+}
+
+function cloudBush(r: number, seed: number): PropModel {
+  const rand = rng(seed);
+  const g = new THREE.Group();
+  const white = new THREE.MeshStandardMaterial({ color: 0xe6ecf6, roughness: 1 });
+  for (let i = 0; i < 6; i++) {
+    const a = rand.next() * Math.PI * 2, d = rand.range(0, r * 0.6);
+    const s = rand.range(0.35, 0.55) * (r / 0.6);
+    g.add(part(new THREE.IcosahedronGeometry(s, 2), white, Math.cos(a) * d, s * 0.9, Math.sin(a) * d));
+  }
+  return { group: g, canopy: [], debris: 0xffffff, top: r };
+}
+
 export function makeProp(kind: PropKind, r: number, seed: number, theme: Theme): PropModel {
   switch (kind) {
     case 'tree': {
@@ -164,7 +223,10 @@ export function makeProp(kind: PropKind, r: number, seed: number, theme: Theme):
     case 'palm': return palm(r, seed);
     case 'deadTree': return deadTree(r, seed);
     case 'crate': return crate(r, seed);
-    case 'pillar': return pillar(r, seed);
+    case 'pillar': return pillar(r, seed, theme);
+    case 'ruinWall': return ruinWall(r, seed);
+    case 'cactus': return cactus(r, seed);
+    case 'cloudBush': return cloudBush(r, seed);
     case 'sandcastle': return sandcastle(r);
   }
 }
@@ -173,9 +235,9 @@ export function makeProp(kind: PropKind, r: number, seed: number, theme: Theme):
 export function makeRemains(kind: PropKind, r: number, color: number) {
   const g = new THREE.Group();
   const m = flat(color);
-  if (kind === 'tree' || kind === 'jungleTree' || kind === 'palm' || kind === 'deadTree') {
+  if (kind === 'tree' || kind === 'jungleTree' || kind === 'palm' || kind === 'deadTree' || kind === 'cactus') {
     g.add(part(new THREE.CylinderGeometry(r * 0.35, r * 0.45, 0.35, 7), flat(0x4a3020), 0, 0.17, 0));
-  } else if (kind === 'sandcastle') {
+  } else if (kind === 'sandcastle' || kind === 'cloudBush') {
     const heap = part(new THREE.SphereGeometry(r, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), m);
     heap.scale.y = 0.35;
     g.add(heap);

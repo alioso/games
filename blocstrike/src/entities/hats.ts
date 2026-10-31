@@ -179,6 +179,18 @@ export function makeSkinTop(id: SkinId): THREE.Group | null {
       return g;
     }
     case 'rainbow': spikes([0xff1744, 0xff9100, 0xffea00, 0x00e676, 0x2979ff, 0xd500f9], 6, 0.45, 0.75); return g;
+    case 'fluorite': {
+      // A little cluster of crystals.
+      const crystal = mat(0xb38cff, { roughness: 0.05, metalness: 0.1, emissive: 0x6a3cff, emissiveIntensity: 0.6, flatShading: true });
+      const green = mat(0x6ee7c8, { roughness: 0.05, emissive: 0x2fb89a, emissiveIntensity: 0.5, flatShading: true });
+      for (const [x, z, h, tilt, m] of [[0, 0, 0.42, 0, crystal], [0.18, 0.08, 0.3, 0.4, green], [-0.16, -0.05, 0.32, -0.45, crystal], [0.05, -0.18, 0.24, 0.3, green]] as const) {
+        const c = mesh(new THREE.OctahedronGeometry(0.1), m, x, h / 2, z);
+        c.scale.set(1, h / 0.2, 1);
+        c.rotation.z = tilt;
+        g.add(c);
+      }
+      return g;
+    }
     case 'chocolate': {
       // White icing on top with coloured sprinkles.
       const icing = mesh(new THREE.SphereGeometry(0.42, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), mat(0xfff3e0, { roughness: 0.3 }), 0, -0.04, 0);

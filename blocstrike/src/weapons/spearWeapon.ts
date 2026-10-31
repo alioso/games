@@ -162,6 +162,19 @@ export class SpearWeapon implements Weapon {
     Object.assign(b.spear, { state: 'sinking', timer: Infinity, x: b.x, z: b.z, y: -2 });
   }
 
+  deflect(by: Bloc, x: number, z: number, r: number) {
+    let n = 0;
+    for (const s of this.spears) {
+      if (s.state !== 'flying' || s.owner === by || Math.hypot(s.x - x, s.z - z) > r) continue;
+      s.dirX = -s.dirX;
+      s.dirZ = -s.dirZ;
+      s.traveled = 0;
+      s.hit.clear();
+      n++;
+    }
+    return n;
+  }
+
   render(dt: number) {
     for (const s of this.spears) s.updateView(dt);
   }

@@ -39,6 +39,20 @@ export function makeGrenadeModel() {
   return g;
 }
 
+/** A crossbow bolt pointing along +z. */
+export function makeBoltModel() {
+  const g = new THREE.Group();
+  const shaft = part(new THREE.CylinderGeometry(0.025, 0.025, 0.7, 5), mat(0x8d6e4a));
+  shaft.rotation.x = Math.PI / 2;
+  g.add(shaft);
+  const tip = part(new THREE.ConeGeometry(0.05, 0.14, 4), mat(0xcfd8dc, { metalness: 0.9, roughness: 0.2 }), 0, 0, 0.42);
+  tip.rotation.x = Math.PI / 2;
+  g.add(tip);
+  const fletch = part(new THREE.BoxGeometry(0.12, 0.01, 0.14), mat(0xe53935), 0, 0, -0.3);
+  g.add(fletch, part(new THREE.BoxGeometry(0.01, 0.12, 0.14), mat(0xe53935), 0, 0, -0.3));
+  return g;
+}
+
 /** What a bloc holds in its hand, pointing along +z. */
 export function makeHeldWeapon(id: WeaponId, teamColor: number) {
   switch (id) {
@@ -74,6 +88,44 @@ export function makeHeldWeapon(id: WeaponId, teamColor: number) {
       grip.rotation.x = Math.PI / 2;
       g.add(grip);
       g.add(part(new THREE.SphereGeometry(0.06, 8, 6), mat(0xd4a017, { metalness: 0.8 }), 0, 0, -0.18));
+      return g;
+    }
+    case 'lightsaber': {
+      const g = new THREE.Group();
+      const hilt = part(new THREE.CylinderGeometry(0.05, 0.055, 0.3, 10), mat(0x9ea7ad, { metalness: 0.9, roughness: 0.25 }), 0, 0, -0.05);
+      hilt.rotation.x = Math.PI / 2;
+      g.add(hilt);
+      g.add(part(new THREE.BoxGeometry(0.12, 0.04, 0.05), mat(0x222222), 0, 0, 0.08));
+      // Bright blade in the team colour (above 1, so it glows through the bloom).
+      const blade = part(new THREE.CylinderGeometry(0.045, 0.045, 1.25, 10), new THREE.MeshBasicMaterial({ color: new THREE.Color(teamColor).lerp(new THREE.Color(0xffffff), 0.35).multiplyScalar(3) }), 0, 0, 0.72);
+      blade.rotation.x = Math.PI / 2;
+      blade.castShadow = false;
+      g.add(blade);
+      return g;
+    }
+    case 'hammer': {
+      const g = new THREE.Group();
+      const handle = part(new THREE.CylinderGeometry(0.045, 0.05, 1.0, 8), mat(0x7a5530), 0, 0, 0.3);
+      handle.rotation.x = Math.PI / 2;
+      g.add(handle);
+      const head = part(new THREE.BoxGeometry(0.5, 0.32, 0.32), mat(0x6d757c, { metalness: 0.7, roughness: 0.35 }), 0, 0, 0.82);
+      g.add(head);
+      g.add(part(new THREE.BoxGeometry(0.52, 0.1, 0.34), mat(teamColor), 0, 0, 0.82));
+      return g;
+    }
+    case 'crossbow': {
+      const g = new THREE.Group();
+      g.add(part(new THREE.BoxGeometry(0.1, 0.1, 0.8), mat(0x7a5530), 0, 0, 0.15));
+      for (const s of [-1, 1]) {
+        const limb = part(new THREE.BoxGeometry(0.45, 0.05, 0.06), mat(0x4e342e), s * 0.22, 0, 0.5);
+        limb.rotation.y = -s * 0.35;
+        g.add(limb);
+      }
+      g.add(part(new THREE.BoxGeometry(0.8, 0.01, 0.01), mat(0xeeeeee), 0, 0, 0.38));
+      g.add(part(new THREE.BoxGeometry(0.06, 0.18, 0.1), mat(teamColor), 0, -0.12, -0.1));
+      const bolt = makeBoltModel();
+      bolt.position.set(0, 0.07, 0.3);
+      g.add(bolt);
       return g;
     }
     case 'machinegun': {

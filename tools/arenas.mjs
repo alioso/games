@@ -10,10 +10,10 @@ page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 page.on('pageerror', (e) => errors.push(`[pageerror] ${e.message}\n${e.stack}`));
 await page.goto('http://localhost:5173/');
 await page.waitForTimeout(1500);
-for (const id of process.argv.slice(2).length ? process.argv.slice(2) : ['grassy-pond', 'volcano', 'jungle', 'beach']) {
+for (const id of process.argv.slice(2).length ? process.argv.slice(2) : ['grassy-pond', 'volcano', 'jungle', 'beach', 'ruins', 'clouds']) {
   await page.evaluate((id) => {
     const s = window.blocstrike.settings;
-    s.ownedArenas = ['grassy-pond', 'volcano', 'jungle', 'beach'];
+    s.ownedArenas = ['grassy-pond', 'volcano', 'jungle', 'beach', 'ruins', 'clouds'];
     s.arena = id;
     s.players = 1;
     window.blocstrike.startGame();

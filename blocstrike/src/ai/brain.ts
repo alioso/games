@@ -3,10 +3,10 @@ import { chance, clamp, rand, segmentCircle, type V2 } from '@engine/math';
 import type { Bloc } from '../entities/bloc';
 import type { Match } from '../match';
 import type { AI_LEVELS } from '../data/tuning';
-import { BAZOOKA, FLAMETHROWER, GRENADE, MACHINEGUN, SPEAR, type WeaponId } from '../data/weapons';
+import { BAZOOKA, CROSSBOW, FLAMETHROWER, GRENADE, HAMMER, MACHINEGUN, MELEE, SPEAR, type WeaponId } from '../data/weapons';
 import { TUNING } from '../data/tuning';
 import { inFlames } from '../weapons/flamethrower';
-import { swordTargets } from '../weapons/sword';
+import { meleeTargets } from '../weapons/melee';
 
 type Level = (typeof AI_LEVELS)['normal'];
 
@@ -17,6 +17,9 @@ const STYLE: Record<WeaponId, { ideal: number; max: number; min: number; speed: 
   grenade: { ideal: 7.5, max: GRENADE.maxDistance - 0.5, min: GRENADE.blastRadius + 1.2, speed: 12 },
   flamethrower: { ideal: FLAMETHROWER.range - 1.3, max: FLAMETHROWER.range - 0.3, min: 0, speed: Infinity },
   sword: { ideal: 1.2, max: 1.8, min: 0, speed: Infinity },
+  lightsaber: { ideal: 1.6, max: 2.3, min: 0, speed: Infinity },
+  hammer: { ideal: 1.4, max: 2, min: 0, speed: Infinity },
+  crossbow: { ideal: 9, max: 18, min: 0, speed: CROSSBOW.speed },
   machinegun: { ideal: 6, max: MACHINEGUN.range - 2, min: 0, speed: MACHINEGUN.speed },
 };
 
@@ -41,6 +44,16 @@ export class Brain {
   private targetT = 0;
   private wander: V2 | null = null;
   private wanderT = 0;
+  /** Stuck detection: where we were a moment ago, and for how long we've been trying to move without getting anywhere. */
+  private lastX = 0;
+  private lastZ = 0;
+  private stuckT = 0;
+  private unstickT = 0;
+  private reviveDecisions = new Map<Bloc, boolean>();
+  /** The last target we couldn't find a path to. */
+  private unreachable: Bloc | null = null;
+  private unstickX = 0;
+  private unstickZ = 0;
   /** Grenade: how long to hold the button for the current throw. */
   private chargeGoal = -1;
 
@@ -54,7 +67,44 @@ export class Brain {
     this.watchThreats(c);
     if (this.me.isBunny) this.bunny(dt, c);
     else this.fighter(dt, c);
+    this.unstick(dt, c);
     return c;
+  }
+
+  /** Trying to walk but not getting anywhere (wedged against something)? Wander off a bit and find a new route. */
+  private unstick(dt: number, c: Controls) {
+    const me = this.me;
+    if (this.unstickT > 0) {
+      this.unstickT -= dt;
+      c.moveX = this.unstickX;
+      c.moveZ = this.unstickZ;
+      return;
+    }
+    const trying = Math.hypot(c.moveX, c.moveZ) > 0.3;
+    const moved = Math.hypot(me.x - this.lastX, me.z - this.lastZ);
+    if (!trying || moved > 0.05 * 60 * dt) {
+      this.stuckT = 0;
+    } else {
+      this.stuckT += dt;
+    }
+    this.lastX = me.x;
+    this.lastZ = me.z;
+    if (this.stuckT < 1.5) return;
+    this.stuckT = 0;
+    // Pick a direction with walkable ground, and forget the current path.
+    for (let i = 0; i < 12; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const dx = Math.sin(a), dz = Math.cos(a);
+      if (this.blockedAhead(dx, dz, 1.5) || this.match.arena.deadlyAt(me.x + dx * 1.5, me.z + dz * 1.5)) continue;
+      this.unstickX = dx;
+      this.unstickZ = dz;
+      this.unstickT = 0.6;
+      break;
+    }
+    this.path = [];
+    this.pathGoal = null;
+    this.repath = 0;
+    this.wander = null;
   }
 
   // ───────────── shared ─────────────
@@ -110,7 +160,11 @@ export class Brain {
     const me = this.me;
     const moved = !this.pathGoal || Math.hypot(this.pathGoal.x - goal.x, this.pathGoal.z - goal.z) > 1.2;
     if (moved || this.repath <= 0) {
-      this.path = this.match.arena.nav.findPath(me.x, me.z, goal.x, goal.z) ?? [];
+      const found = this.match.arena.nav.findPath(me.x, me.z, goal.x, goal.z);
+      // No route on the grid: head straight for it (the edge guard and unstick keep us safe),
+      // and remember the target was out of reach so we pick another one.
+      if (!found) this.unreachable = this.target;
+      this.path = found ?? [{ x: goal.x, z: goal.z }];
       if (exact && this.path.length) this.path[this.path.length - 1] = goal;
       this.pathGoal = { ...goal };
       this.repath = 0.5;
@@ -142,9 +196,7 @@ export class Brain {
     const threat = this.match.blocs.find((b) => b.alive && !b.isBunny && b.team !== me.team && Math.hypot(b.x - me.x, b.z - me.z) < 8);
     this.wanderT -= dt;
     // A fallen teammate: hop over and revive them, unless an enemy is right here.
-    const body = me.revivesLeft > 0 ? this.match.blocs
-      .filter((b) => b.state === 'dead' && b.team === me.team)
-      .sort((a, b) => Math.hypot(a.x - me.x, a.z - me.z) - Math.hypot(b.x - me.x, b.z - me.z))[0] : undefined;
+    const body = me.revivesLeft > 0 ? this.reviveTarget() : undefined;
     const closeThreat = threat && Math.hypot(threat.x - me.x, threat.z - me.z) < 4;
     // Only if it's safe: no enemy anywhere near the fallen teammate.
     const bodySafe = body && !this.match.blocs.some((b) => b.alive && !b.isBunny && b.team !== me.team && Math.hypot(b.x - body.x, b.z - body.z) < 8);
@@ -152,7 +204,7 @@ export class Brain {
       this.goTo({ x: body.x, z: body.z }, c, true);
       return;
     }
-    if (threat && this.wanderT < 2.5) {
+    if (threat && this.wanderT < 2.5 && !this.match.suddenDeath) {
       // Hop away from danger.
       const dx = me.x - threat.x, dz = me.z - threat.z, l = Math.hypot(dx, dz) || 1;
       this.wander = nav.nearestFree(me.x + (dx / l) * 4, me.z + (dz / l) * 4);
@@ -197,11 +249,9 @@ export class Brain {
       return;
     }
 
-    // 2. Revive a fallen teammate.
+    // 2. Revive a fallen teammate (if this bot decides to: depends on difficulty).
     if (me.revivesLeft > 0) {
-      const body = this.match.blocs
-        .filter((b) => b.state === 'dead' && b.team === me.team)
-        .sort((a, b) => Math.hypot(a.x - me.x, a.z - me.z) - Math.hypot(b.x - me.x, b.z - me.z))[0];
+      const body = this.reviveTarget();
       if (body && Math.hypot(body.x - me.x, body.z - me.z) < 18 && !(canSee && dist < 4)) {
         this.goTo({ x: body.x, z: body.z }, c, true);
         return;
@@ -209,7 +259,7 @@ export class Brain {
     }
 
     // 3. Sword, or out of grenades/fuel: walk up and hit them.
-    if (me.weapon === 'sword' || this.match.outOfAmmo(me)) {
+    if (MELEE[me.weapon] || this.match.outOfAmmo(me)) {
       this.brawl(dt, c, target);
       return;
     }
@@ -243,7 +293,8 @@ export class Brain {
   private attack(dt: number, c: Controls, target: Bloc | null, dist: number, canSee: boolean) {
     const me = this.me;
     const style = STYLE[me.weapon];
-    if (this.match.outOfAmmo(me)) return; // fists only: brawl() handles it
+    // Melee (sword, or fists when out of ammo): brawl() handles it. Ranged logic here would cancel its timing.
+    if (MELEE[me.weapon] || this.match.outOfAmmo(me)) return;
 
     // A grenade throw in progress: keep holding until it's charged enough, then let go.
     if (me.weapon === 'grenade' && this.chargeGoal >= 0) {
@@ -300,10 +351,13 @@ export class Brain {
   /** Fists only: get next to the target, face it, and punch when it's in reach. */
   private brawl(dt: number, c: Controls, target: Bloc | null) {
     const me = this.me;
-    const sword = me.weapon === 'sword' && !this.match.outOfAmmo(me);
-    const inReach = sword ? swordTargets(this.match, me, true)[0] ?? null : this.match.punchTarget(me);
+    const melee = !!MELEE[me.weapon] && !this.match.outOfAmmo(me);
+    const inReach = melee ? meleeTargets(this.match, me, me.weapon, true)[0] ?? null : this.match.punchTarget(me);
     // Never slash while a teammate is in the arc.
-    const friendInArc = sword && swordTargets(this.match, me).some((b) => b.team === me.team);
+    // Never swing while a teammate would be hit (the hammer's smash hits all around where it lands).
+    const friendInArc = melee && (me.weapon === 'hammer'
+      ? this.match.blocs.some((b) => b !== me && b.alive && b.team === me.team && Math.hypot(b.x - (me.x + me.aimX * 1.2), b.z - (me.z + me.aimZ * 1.2)) < HAMMER.smashRadius + 0.5)
+      : meleeTargets(this.match, me, me.weapon).some((b) => b.team === me.team));
     const t = inReach ?? target;
     if (!t) return;
     const dx = t.x - me.x, dz = t.z - me.z, d = Math.hypot(dx, dz) || 1;
@@ -348,6 +402,7 @@ export class Brain {
       if (!b.alive || b.team === me.team) continue;
       let score = Math.hypot(b.x - me.x, b.z - me.z);
       // The bunny is the goal, but blocs shoot back: go for it when it's close or few defenders are left.
+      if (b.isBunny && this.match.suddenDeath) score -= 40;
       if (b.isBunny) {
         const defenders = this.defenders(b);
         score = score * 2 - (score < 5 ? 8 : 0) - (defenders === 0 ? 20 : defenders === 1 ? 6 : 0);
@@ -355,6 +410,7 @@ export class Brain {
         if (me.weapon === 'grenade') score -= 12;
       }
       if (myBunny?.alive && !b.isBunny && Math.hypot(b.x - myBunny.x, b.z - myBunny.z) < 7) score -= 8;
+      if (b === this.unreachable) score += 15;
       score += rand(0, 3);
       if (score < bestScore) { bestScore = score; best = b; }
     }
@@ -379,6 +435,30 @@ export class Brain {
       if (hit !== null && hit * dist < dist - 0.5) return false;
     }
     return true;
+  }
+
+  /**
+   * The fallen teammate this bot wants to revive, if any. Each knockout is decided once:
+   * easy bots never revive, normal ones sometimes (and only when no enemy is near), hard ones always.
+   */
+  private reviveTarget() {
+    const me = this.me;
+    const bodies = this.match.blocs
+      .filter((b) => b.state === 'dead' && b.team === me.team)
+      .sort((a, b) => Math.hypot(a.x - me.x, a.z - me.z) - Math.hypot(b.x - me.x, b.z - me.z));
+    for (const body of bodies) {
+      let yes = this.reviveDecisions.get(body);
+      if (yes === undefined) {
+        yes = chance(this.level.reviveChance);
+        this.reviveDecisions.set(body, yes);
+      }
+      if (!yes) continue;
+      if (this.level.reviveChance < 1 && this.match.blocs.some((e) => e.alive && !e.isBunny && e.team !== me.team && Math.hypot(e.x - body.x, e.z - body.z) < 6)) continue;
+      return body;
+    }
+    // Forget decisions about blocs that are back on their feet, so the next knockout gets a fresh roll.
+    for (const b of this.reviveDecisions.keys()) if (b.state !== 'dead') this.reviveDecisions.delete(b);
+    return undefined;
   }
 
   /** Stand between our bunny and the closest enemy. */

@@ -163,6 +163,7 @@ export class BunnyView implements ActorView {
   setPunches() {}
   punchAnim() {}
   swingAnim() {}
+  smashAnim() {}
   setDead() {}
   setRevive() {}
   setCooldown() {}
@@ -173,6 +174,7 @@ export class BunnyView implements ActorView {
     this.time += dt;
     this.yaw = dampAngle(this.yaw, s.yaw, 10, dt);
     this.root.rotation.y = this.yaw;
+    this.root.position.y = s.jumpY;
     this.squash = damp(this.squash, 0, 8, dt);
     this.flash = Math.max(0, this.flash - dt * 3);
     this.droop = Math.max(0, this.droop - dt * 1.2);

@@ -200,6 +200,16 @@ export class Critters {
 
   /** Something fell in at (x, z): the locals react. */
   feed(kind: LiquidKind, x: number, z: number, color: number, sound: boolean) {
+    if (kind === 'quicksand') {
+      if (sound) SFX.slurp();
+      this.particles.burst({ x, y: 0.2, z, count: 24, color: 0xc9a46a, speed: 2, up: 3, size: 0.14, life: 0.8 });
+      return;
+    }
+    if (kind === 'sky') {
+      if (sound) SFX.fall();
+      this.particles.burst({ x, y: 0.2, z, count: 16, color: 0xffffff, speed: 1.5, up: 1, size: 0.3, life: 1, gravity: -1 });
+      return;
+    }
     if (kind === 'lava') {
       if (sound) SFX.sizzle();
       this.glow.burst({ x, y: 0.4, z, count: 40, color: 0xff7a20, intensity: 3, speed: 3, up: 6, size: 0.16, life: 0.9, gravity: 2 });

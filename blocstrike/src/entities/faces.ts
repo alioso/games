@@ -194,6 +194,50 @@ const chocolate: Painter = (g) => {
   g.beginPath(); g.ellipse(64, 92, 10, 7, 0, 0, Math.PI * 2); g.fill();
 };
 
+const sponge: Painter = (g) => {
+  // Big round eyes, buck teeth.
+  for (const x of [40, 88]) {
+    g.fillStyle = '#fff';
+    g.beginPath(); g.arc(x, 44, 17, 0, Math.PI * 2); g.fill();
+    g.lineWidth = 4; g.stroke();
+    g.fillStyle = '#3d8bff';
+    g.beginPath(); g.arc(x, 46, 8, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#111';
+    g.beginPath(); g.arc(x, 46, 4, 0, Math.PI * 2); g.fill();
+  }
+  g.lineWidth = 6;
+  g.beginPath(); g.arc(64, 72, 26, 0.15 * Math.PI, 0.85 * Math.PI); g.stroke();
+  g.fillStyle = '#fff';
+  g.fillRect(52, 92, 10, 12); g.fillRect(66, 92, 10, 12);
+  g.strokeRect(52, 92, 10, 12); g.strokeRect(66, 92, 10, 12);
+};
+
+const fluorite: Painter = (g) => {
+  // Diamond-shaped eyes and a calm smile.
+  for (const x of [42, 86]) {
+    g.fillStyle = '#fff';
+    g.beginPath(); g.moveTo(x, 30); g.lineTo(x + 13, 46); g.lineTo(x, 62); g.lineTo(x - 13, 46); g.closePath(); g.fill();
+    g.fillStyle = '#2a0a5e';
+    g.beginPath(); g.moveTo(x, 38); g.lineTo(x + 6, 46); g.lineTo(x, 54); g.lineTo(x - 6, 46); g.closePath(); g.fill();
+  }
+  g.strokeStyle = '#2a0a5e';
+  g.lineWidth = 6;
+  g.beginPath(); g.arc(64, 76, 20, 0.2 * Math.PI, 0.8 * Math.PI); g.stroke();
+};
+
+const lava: Painter = (g) => {
+  // Angry glowing eyes and a jagged mouth.
+  g.fillStyle = '#ffd27a';
+  for (const [x, flip] of [[40, 1], [88, -1]] as const) {
+    g.beginPath(); g.moveTo(x - 16, 40 - 8 * flip); g.lineTo(x + 16, 40 + 8 * flip); g.lineTo(x + 12, 56); g.lineTo(x - 12, 56); g.closePath(); g.fill();
+  }
+  g.fillStyle = '#ff6a1a';
+  g.beginPath();
+  g.moveTo(30, 80);
+  for (let i = 0; i <= 8; i++) g.lineTo(30 + i * 8.5, i % 2 ? 96 : 80);
+  g.lineTo(98, 104); g.lineTo(30, 104); g.closePath(); g.fill();
+};
+
 const dead: Painter = (g) => {
   g.lineWidth = 9;
   for (const x of [40, 88]) {
@@ -209,7 +253,7 @@ const dead: Painter = (g) => {
   g.stroke();
 };
 
-const PAINTERS: Record<SkinId | 'dead', Painter> = { beginner, noob, bronze, copper, iron, silver, pro, chocolate, gold, rainbow, dead };
+const PAINTERS: Record<SkinId | 'dead', Painter> = { beginner, noob, bronze, copper, sponge, iron, silver, pro, chocolate, gold, fluorite, lava, rainbow, dead };
 
 const cache = new Map<string, THREE.CanvasTexture>();
 

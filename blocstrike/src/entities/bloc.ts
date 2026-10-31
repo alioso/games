@@ -58,6 +58,10 @@ export class Bloc {
   mag: number = MACHINEGUN.fireTime;
   /** Bullets a bunny has taken towards its next lost heart. */
   bulletHits = 0;
+  /** Seconds spent sinking in quicksand (swallowed at QUICKSAND_TIME). */
+  sink = 0;
+  /** A boulder just hit this bunny: don't count the same roll-over twice. */
+  boulderHitT = 0;
   revivesLeft: number = TUNING.revive.perPlayer;
   /** On a dead bloc: how far along a teammate is in reviving it. */
   reviveProgress = 0;

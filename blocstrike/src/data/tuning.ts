@@ -33,6 +33,8 @@ export const TUNING = {
   },
   rounds: {
     toWin: 3, // best of 5
+    suddenDeath: 120, // seconds: after this, everyone goes for the bunnies and they stop running away
+    timeUp: 240, // seconds: a round still going this long is a draw
   },
   coins: {
     perWin: 10, // for winning the whole match
@@ -53,8 +55,9 @@ export const AI_LEVELS: Record<Difficulty, {
   aimError: number; // degrees of random aim error
   dodgeChance: number; // chance to dodge an incoming spear
   leadTarget: number; // 0..1: how well they predict where you are going
+  reviveChance: number; // 0..1: chance they go and revive a fallen teammate (only when it's safe below 1)
 }> = {
-  easy: { reaction: 1.6, aimError: 16, dodgeChance: 0.2, leadTarget: 0.1 },
-  normal: { reaction: 1.1, aimError: 10, dodgeChance: 0.45, leadTarget: 0.5 },
-  hard: { reaction: 0.65, aimError: 5, dodgeChance: 0.65, leadTarget: 0.85 },
+  easy: { reaction: 1.6, aimError: 16, dodgeChance: 0.2, leadTarget: 0.1, reviveChance: 0 },
+  normal: { reaction: 1.1, aimError: 10, dodgeChance: 0.45, leadTarget: 0.5, reviveChance: 0.35 },
+  hard: { reaction: 0.65, aimError: 5, dodgeChance: 0.65, leadTarget: 0.85, reviveChance: 1 },
 };

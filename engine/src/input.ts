@@ -55,11 +55,20 @@ class KeyboardState {
         return;
       }
       if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
+      // While Cmd is held, other key-downs belong to shortcuts, and their key-ups never arrive.
+      if (e.metaKey && e.key !== 'Meta') return;
       if (!e.repeat) this.hits.set(e.code, (this.hits.get(e.code) ?? 0) + 1);
       this.down.add(e.code);
     });
-    window.addEventListener('keyup', (e) => this.down.delete(e.code));
+    window.addEventListener('keyup', (e) => {
+      this.down.delete(e.code);
+      // macOS doesn't send key-up for keys released while Cmd is held: forget everything when Cmd goes up.
+      if (e.key === 'Meta') this.down.clear();
+    });
+    // Switching windows, tabs or apps can also swallow key-ups: start fresh when we come back.
     window.addEventListener('blur', () => this.down.clear());
+    document.addEventListener('visibilitychange', () => this.down.clear());
+    window.addEventListener('contextmenu', () => this.down.clear());
   }
 
   any(codes: string[]) {

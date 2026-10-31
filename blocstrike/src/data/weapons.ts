@@ -1,6 +1,6 @@
-// 🗡️ WEAPONS. Each team picks one weapon for the whole match.
+// 🗡️ WEAPONS. You pick yours in Play; computer players get random ones.
 
-export type WeaponId = 'spear' | 'sword' | 'bazooka' | 'grenade' | 'flamethrower' | 'machinegun';
+export type WeaponId = 'spear' | 'sword' | 'lightsaber' | 'hammer' | 'crossbow' | 'bazooka' | 'grenade' | 'flamethrower' | 'machinegun';
 
 export interface WeaponDef {
   id: WeaponId;
@@ -24,6 +24,27 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     icon: '⚔️',
     price: 50,
     description: 'Always in your hand, never reloads. You have to get close!',
+  },
+  lightsaber: {
+    id: 'lightsaber',
+    name: 'Light Saber',
+    icon: '✨',
+    price: 80,
+    description: 'Longer reach and faster than the sword. Slash at spears, bolts and bullets to send them back!',
+  },
+  hammer: {
+    id: 'hammer',
+    name: 'Hammer',
+    icon: '🔨',
+    price: 60,
+    description: 'Slow but mighty: SMASH! Knocks everyone around flying (into the water?) and breaks trees and rocks.',
+  },
+  crossbow: {
+    id: 'crossbow',
+    name: 'Crossbow',
+    icon: '🏹',
+    price: 60,
+    description: 'Fast bolts that fly really far and pierce two blocs. Reloads by itself.',
   },
   bazooka: {
     id: 'bazooka',
@@ -107,10 +128,38 @@ export const PUNCH = {
   push: 5,
 };
 
-export const SWORD = {
-  reach: 0.95, // gap between the two bodies
-  arcDeg: 65, // half-angle of the slash in front of you
-  cooldown: 0.45, // seconds between swings
+/** Melee weapons: how far they reach (gap between bodies), how wide the swing is, and how often you can swing. */
+export interface MeleeDef {
+  reach: number;
+  arcDeg: number; // half-angle of the swing in front of you
+  cooldown: number; // seconds between swings
+}
+
+export const SWORD: MeleeDef = { reach: 0.95, arcDeg: 65, cooldown: 0.45 };
+
+export const LIGHTSABER: MeleeDef & { deflectRadius: number } = {
+  reach: 1.3,
+  arcDeg: 70,
+  cooldown: 0.3,
+  deflectRadius: 2.2, // flying things this close in front get sent back
+};
+
+export const HAMMER: MeleeDef & { smashRadius: number; pushRadius: number; push: number } = {
+  reach: 1.0,
+  arcDeg: 50,
+  cooldown: 1.0, // slow
+  smashRadius: 1.4, // everyone this close to where it lands is knocked out
+  pushRadius: 3.4, // everyone this close is knocked back
+  push: 16,
+};
+
+export const MELEE: Partial<Record<WeaponId, MeleeDef>> = { sword: SWORD, lightsaber: LIGHTSABER, hammer: HAMMER };
+
+export const CROSSBOW = {
+  speed: 34,
+  range: 22, // much further than the spear
+  reload: 1.8, // seconds, by itself
+  maxKills: 2,
 };
 
 export const MACHINEGUN = {

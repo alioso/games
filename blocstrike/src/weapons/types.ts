@@ -38,5 +38,7 @@ export interface Weapon {
   status(b: Bloc): WeaponStatus;
   threats(): Threat[];
   dangers(): Danger[];
+  /** Light saber: send flying things near (x, z) back. Returns how many. */
+  deflect?(by: Bloc, x: number, z: number, r: number): number;
   dispose(): void;
 }

@@ -22,6 +22,8 @@ export const THEME_LOOK: Record<Theme, ThemeLook> = {
   meadow: { background: 0x3d7a2c, outer: 0x3d7a2c, cliff: 0x5d4a35, grass: 'meadow', grassCount: 2000, flowers: [0xffffff, 0xfff176, 0xf48fb1, 0xce93d8], flowerCount: 120 },
   volcano: { background: 0x1a0d08, outer: null, cliff: 0x2a2220, grass: 'ash', grassCount: 300, flowers: [0xff7a20, 0xffb040], flowerCount: 60 },
   jungle: { background: 0x123a16, outer: 0x1c3d1e, cliff: 0x4a3a25, grass: 'jungle', grassCount: 1200, flowers: [0xff5252, 0xffab40, 0xe040fb, 0xffeb3b], flowerCount: 90 },
+  ruins: { background: 0x6b5236, outer: 0x8a6b45, cliff: 0x8a6b45, grass: 'beach', grassCount: 260, flowers: [0xd84315, 0xffb300, 0xf06292], flowerCount: 70 },
+  clouds: { background: 0x1d4f9e, outer: null, cliff: 0xc8d4e8, grass: null, grassCount: 0, flowers: [0xffe066, 0xfff3b0, 0xffffff], flowerCount: 120 },
   beach: { background: 0x2a8fbf, outer: 0xc9ad74, cliff: 0xc9a86a, grass: 'beach', grassCount: 250, flowers: [0xffffff, 0xffc1cc, 0xffe0b2], flowerCount: 90 },
 };
 
@@ -97,6 +99,41 @@ function paint(def: ArenaDef) {
       }
       break;
     }
+    case 'ruins': {
+      g.fillStyle = '#c9a774';
+      g.fillRect(0, 0, w, h);
+      speckle(7000, ['rgba(120,90,50,0.18)', 'rgba(240,220,180,0.15)'], 2, 9);
+      // Old flagstones, half buried in the sand.
+      for (let i = 0; i < 160; i++) {
+        const x = r.next() * w, y = r.next() * h, s = 18 + r.next() * 26;
+        g.fillStyle = r.pick(['rgba(170,150,120,0.55)', 'rgba(150,130,100,0.5)', 'rgba(190,170,135,0.55)']);
+        g.fillRect(x, y, s, s * (0.6 + r.next() * 0.5));
+        g.strokeStyle = 'rgba(90,70,45,0.4)';
+        g.lineWidth = 2;
+        g.strokeRect(x, y, s, s * 0.8);
+      }
+      // Grooves worn by the rolling boulders.
+      for (const b of def.boulders ?? []) {
+        const [x0, y0] = toPx(b.ax, b.az), [x1, y1] = toPx(b.bx, b.bz);
+        g.strokeStyle = 'rgba(90,65,35,0.45)';
+        g.lineWidth = (b.r * 2 * w) / W;
+        g.lineCap = 'round';
+        g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
+      }
+      break;
+    }
+    case 'clouds': {
+      // Soft, slightly blue-shadowed cloud tops.
+      g.fillStyle = '#dde5f2';
+      g.fillRect(0, 0, w, h);
+      for (let i = 0; i < 1500; i++) {
+        g.fillStyle = r.pick(['rgba(150,170,210,0.2)', 'rgba(245,248,255,0.45)', 'rgba(190,205,235,0.3)']);
+        g.beginPath();
+        g.arc(r.next() * w, r.next() * h, 6 + r.next() * 22, 0, Math.PI * 2);
+        g.fill();
+      }
+      break;
+    }
     case 'beach': {
       g.fillStyle = '#d8bd85';
       g.fillRect(0, 0, w, h);
@@ -136,10 +173,10 @@ export function buildGround(terrain: Terrain) {
   const group = new THREE.Group();
   const { tex, glowTex, W, D } = paint(def);
 
-  // Land slab: the outline extruded downwards, so islands get rocky cliffs.
-  const shape = new THREE.Shape(terrain.landPoly.map(([x, z]) => new THREE.Vector2(x, -z)));
-  const depth = 1.2;
-  const geo = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false, curveSegments: 1 });
+  // Land slabs: each outline extruded downwards, so islands get cliffs.
+  const depth = def.edge === 'sky' ? 0.7 : 1.2;
+  const shapes = terrain.landPolys.map((poly) => new THREE.Shape(poly.map(([x, z]) => new THREE.Vector2(x, -z))));
+  const geo = new THREE.ExtrudeGeometry(shapes, { depth, bevelEnabled: false, curveSegments: 1 });
   geo.rotateX(-Math.PI / 2);
   geo.translate(0, -depth, 0);
   // Map the texture by world position, the same way it was painted.
@@ -164,9 +201,12 @@ export function buildGround(terrain: Terrain) {
     group.add(outer);
   }
 
-  if (def.edge !== 'lava') {
+  if (def.edge === 'sky') {
+    // Puffy cloud rims around each island (but not where the rainbow bridges land).
+    terrain.landPolys.forEach((poly, i) => group.add(makeEdgeWall(poly, def.decoSeed + i, 'cloud', (x, z) => terrain.onBridge(x, z, 0.6))));
+  } else if (def.edge !== 'lava') {
     const skip = def.shore ? (x: number, z: number) => z > terrain.shoreZ(x, true) - 1 : undefined;
-    group.add(makeEdgeWall(terrain.landPoly, def.decoSeed + 1, def.edge, skip));
+    terrain.landPolys.forEach((poly, i) => group.add(makeEdgeWall(poly, def.decoSeed + 1 + i, def.edge === 'rocks' ? 'rocks' : def.edge as 'hedge' | 'jungle' | 'dunes', skip)));
   }
 
   // Grass tufts and flowers (or embers, or shells), kept off liquids, bridges and props.
@@ -189,6 +229,10 @@ export function buildGround(terrain: Terrain) {
     group.add(g.mesh);
   }
   const flowers = makeFlowers(sample(look.flowerCount, 0.3).map((p) => ({ ...p, color: r.pick(look.flowers) })));
+  if (def.theme === 'clouds') {
+    // Little golden stars sparkle on the clouds.
+    (flowers as THREE.Mesh).material = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffe680).multiplyScalar(1.8) });
+  }
   if (def.theme === 'volcano') {
     // Embers glow instead of flowers.
     (flowers as THREE.Mesh).material = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xff6a1a).multiplyScalar(2) });

@@ -9,6 +9,7 @@ import type { WeaponId } from '../data/weapons';
 import { faceTexture } from './faces';
 import { makeHat, makeSkinTop } from './hats';
 import { makeHeldWeapon } from './weaponModels';
+import { bodyLook } from './bodies';
 
 const HIP = 0.42;
 const BLOC_BOX = new RoundedBoxGeometry(1, 1, 1, 3, 0.14);
@@ -38,6 +39,7 @@ export interface ActorView {
   setPunches(n: number, max: number): void;
   punchAnim(): void;
   swingAnim(): void;
+  smashAnim(): void;
   setDead(dead: boolean): void;
   setRevive(progress: number): void;
   setCooldown(fraction: number): void;
@@ -57,6 +59,9 @@ const GRIP: Record<WeaponId, { pos: [number, number, number]; tilt: number }> = 
   grenade: { pos: [0.62, -0.12, 0.3], tilt: 0 },
   flamethrower: { pos: [0.6, -0.1, 0.15], tilt: 0 },
   sword: { pos: [0.6, -0.05, 0.15], tilt: -0.55 },
+  lightsaber: { pos: [0.6, -0.05, 0.15], tilt: -0.7 },
+  hammer: { pos: [0.62, 0.0, 0.0], tilt: -1.2 },
+  crossbow: { pos: [0.55, 0.0, 0.2], tilt: 0 },
   machinegun: { pos: [0.6, -0.05, 0.2], tilt: 0 },
 };
 
@@ -76,6 +81,7 @@ export class BlocView implements ActorView {
   private fist: THREE.Mesh;
   private fistT = 0;
   private swingT = 0;
+  private smashT = 0;
   private grip: { pos: [number, number, number]; tilt: number };
   private walk = 0;
   private yaw = 0;
@@ -85,13 +91,15 @@ export class BlocView implements ActorView {
   private time = Math.random() * 10;
   private blinkUntil = 0;
   private rainbow: boolean;
+  private baseEmissive: THREE.Color;
 
   constructor(readonly team: TeamDef, humanLabel: string | null, readonly look: BlocLook, weapon: WeaponId) {
     const skin = skinById(look.skin);
     this.rainbow = skin.id === 'rainbow';
     this.root.add(this.body);
 
-    this.bodyMat = new THREE.MeshStandardMaterial({ color: skin.color ?? team.color, metalness: skin.metal, roughness: skin.rough });
+    this.bodyMat = new THREE.MeshStandardMaterial({ color: skin.color ?? team.color, metalness: skin.metal, roughness: skin.rough, ...bodyLook(skin) });
+    this.baseEmissive = this.bodyMat.emissive.clone();
     const box = new THREE.Mesh(BLOC_BOX, this.bodyMat);
     box.castShadow = box.receiveShadow = true;
     this.body.add(box);
@@ -224,6 +232,11 @@ export class BlocView implements ActorView {
     this.squash = 0.15;
   }
 
+  smashAnim() {
+    this.smashT = 0.3;
+    this.squash = 0.4;
+  }
+
   punchAnim() {
     this.fistT = 0.16;
     this.squash = 0.2;
@@ -263,7 +276,8 @@ export class BlocView implements ActorView {
     this.root.rotation.y = this.yaw;
     this.squash = damp(this.squash, 0, 10, dt);
     this.flash = Math.max(0, this.flash - dt * 4);
-    this.bodyMat.emissive.setScalar(this.flash * 0.9);
+    // Hit flash on top of any glow the skin has.
+    this.bodyMat.emissive.copy(this.baseEmissive).addScalar(this.flash * 0.9);
     if (this.rainbow) this.bodyMat.color.setHSL((this.time * 0.25) % 1, 0.85, 0.55);
     this.held.visible = s.holdingWeapon && this.deadT < 0;
     this.fistT = Math.max(0, this.fistT - dt);
@@ -271,7 +285,13 @@ export class BlocView implements ActorView {
     if (this.fist.visible) this.fist.position.set(0.3, -0.05, 0.55 + Math.sin((this.fistT / 0.16) * Math.PI) * 0.45);
     // Sword slash: sweep the blade across the front, right to left.
     this.swingT = Math.max(0, this.swingT - dt);
-    if (this.swingT > 0) {
+    this.smashT = Math.max(0, this.smashT - dt);
+    if (this.smashT > 0) {
+      // Up over the head, then down hard in front.
+      const k = 1 - this.smashT / 0.3;
+      this.held.position.set(0.2, 0.3, 0.2);
+      this.held.rotation.set(k < 0.4 ? -2.4 * (k / 0.4) : -2.4 + (k - 0.4) / 0.6 * 3.0, 0, 0);
+    } else if (this.swingT > 0) {
       const k = 1 - this.swingT / 0.2;
       this.held.position.set(Math.cos(k * Math.PI) * 0.6, 0, 0.35 + Math.sin(k * Math.PI) * 0.35);
       this.held.rotation.set(-0.15, 1.4 - k * 2.8, 0);

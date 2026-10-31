@@ -1,8 +1,9 @@
 // Runs computer-only rounds at full speed and prints pacing/balance stats. Needs `npm run dev`.
 // node tools/simulate.mjs arenas [runs]        → every arena, everyone on random weapons
-// node tools/simulate.mjs weapons [runs] [arena] → every weapon against every weapon (whole teams)
+// node tools/simulate.mjs weapons [runs] [arena] [only] → every weapon against every weapon (whole teams);
+//   `only` limits it to matchups involving that weapon
 import { chromium } from 'playwright';
-const [mode = 'arenas', runsArg = '8', arenaArg = 'grassy-pond'] = process.argv.slice(2);
+const [mode = 'arenas', runsArg = '8', arenaArg = 'grassy-pond', only] = process.argv.slice(2);
 const runs = Number(runsArg);
 const browser = await chromium.launch({ channel: 'chrome' });
 const page = await browser.newPage();
@@ -17,12 +18,13 @@ const report = (label, r) => {
   console.log(`${label.padEnd(27)} ${avg('time').padStart(5)}s  kills ${avg('kills')}  revives ${avg('revives')}  eaten ${avg('eaten')}  ff ${avg('friendlyKills')}  B:${wins.Blue ?? 0} R:${wins.Red ?? 0} draw:${wins.draw ?? 0}${stuck ? `  STUCK:${stuck}` : ''}`);
 };
 if (mode === 'arenas') {
-  for (const id of ['grassy-pond', 'volcano', 'jungle', 'beach']) {
+  for (const id of ['grassy-pond', 'volcano', 'jungle', 'beach', 'ruins', 'clouds']) {
     report(id, await page.evaluate(([n, id]) => window.blocstrike.simulate('normal', n, undefined, id), [runs, id]));
   }
 } else {
-  const W = ['spear', 'sword', 'bazooka', 'grenade', 'flamethrower', 'machinegun'];
+  const W = ['spear', 'sword', 'lightsaber', 'hammer', 'crossbow', 'bazooka', 'grenade', 'flamethrower', 'machinegun'];
   for (const a of W) for (const b of W) {
+    if (only && a !== only && b !== only) continue;
     report(`${a} v ${b}`, await page.evaluate(([n, a, b, id]) => window.blocstrike.simulate('normal', n, [a, b], id), [runs, a, b, arenaArg]));
   }
 }

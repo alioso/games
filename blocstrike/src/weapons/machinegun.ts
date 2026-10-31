@@ -139,6 +139,19 @@ export class MachineGun implements Weapon {
     this.tracers.instanceMatrix.needsUpdate = true;
   }
 
+  deflect(by: Bloc, x: number, z: number, r: number) {
+    let n = 0;
+    for (const u of this.bullets) {
+      if (u.owner === by || Math.hypot(u.x - x, u.z - z) > r) continue;
+      u.dirX = -u.dirX;
+      u.dirZ = -u.dirZ;
+      u.owner = by;
+      u.traveled = 0;
+      n++;
+    }
+    return n;
+  }
+
   onDeath(b: Bloc) {
     this.shotAcc.delete(b);
   }

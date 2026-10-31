@@ -92,6 +92,19 @@ export class Bazooka implements Weapon {
     }
   }
 
+  deflect(by: Bloc, x: number, z: number, r: number) {
+    let n = 0;
+    for (const k of this.rockets) {
+      if (k.owner === by || Math.hypot(k.x - x, k.z - z) > r) continue;
+      k.dirX = -k.dirX;
+      k.dirZ = -k.dirZ;
+      k.owner = by;
+      k.traveled = 0;
+      n++;
+    }
+    return n;
+  }
+
   onDeath() {}
   onEaten() {}
 

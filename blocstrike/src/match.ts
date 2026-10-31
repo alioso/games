@@ -17,7 +17,10 @@ import { SpearWeapon } from './weapons/spearWeapon';
 import { Bazooka } from './weapons/bazooka';
 import { Grenade } from './weapons/grenade';
 import { Flamethrower } from './weapons/flamethrower';
-import { Sword } from './weapons/sword';
+import { Blade, Hammer } from './weapons/melee';
+import { Crossbow } from './weapons/crossbow';
+import { QUICKSAND_TIME } from './world/terrain';
+import type { LiquidKind } from './data/arenas';
 import { MachineGun } from './weapons/machinegun';
 
 /** One round. A match (best of 5) is a series of these, run by main.ts. */
@@ -104,7 +107,9 @@ export class Match {
   private countdownT = 3.6;
   private lastCount = 4;
   private drawTimer = 0;
-  private sinking: { bloc: Bloc; t: number }[] = [];
+  /** Late in a long round: everyone goes for the bunnies. */
+  suddenDeath = false;
+  private sinking: { bloc: Bloc; t: number; kind: LiquidKind }[] = [];
   private fx: Fx[] = [];
   /** Counters for balancing (see simulate() in main.ts). */
   readonly stats = { friendlyKills: 0, enemyKills: 0, friendlyBunnyHits: 0, enemyBunnyHits: 0 };
@@ -146,7 +151,9 @@ export class Match {
       w = id === 'spear' ? new SpearWeapon(this)
         : id === 'bazooka' ? new Bazooka(this)
         : id === 'grenade' ? new Grenade(this)
-        : id === 'sword' ? new Sword(this)
+        : id === 'sword' || id === 'lightsaber' ? new Blade(this, id)
+        : id === 'hammer' ? new Hammer(this)
+        : id === 'crossbow' ? new Crossbow(this)
         : id === 'machinegun' ? new MachineGun(this)
         : new Flamethrower(this);
       this.weapons.set(id, w);
@@ -205,9 +212,19 @@ export class Match {
     this.collide();
 
     for (const b of this.blocs) {
-      if (b.alive && !b.airborne && this.arena.deadlyAt(b.x, b.z)) this.eaten(b);
+      if (!b.alive || b.airborne) { b.sink = 0; continue; }
+      const deadly = this.arena.deadlyAt(b.x, b.z);
+      if (deadly === 'quicksand') {
+        // Quicksand takes its time: get out before it swallows you.
+        b.sink += dt;
+        if (b.sink >= QUICKSAND_TIME) this.eaten(b);
+      } else {
+        b.sink = Math.max(0, b.sink - dt * 2);
+        if (deadly) this.eaten(b);
+      }
     }
 
+    this.boulderHits(dt);
     for (const w of this.weapons.values()) w.update(dt);
     this.updateRevives(dt);
     this.updateSinking(dt);
@@ -284,7 +301,8 @@ export class Match {
       b.vz = damp(b.vz, 0, 18, dt);
     } else {
       // Spraying flames slows you down a bit.
-      const speed = b.firing ? b.speed * 0.6 : b.speed;
+      // (and quicksand slows you right down)
+      const speed = (b.firing ? b.speed * 0.6 : b.speed) * (b.sink > 0 ? 0.35 : 1);
       b.vx = damp(b.vx, c.moveX * speed, 18, dt);
       b.vz = damp(b.vz, c.moveZ * speed, 18, dt);
     }
@@ -295,6 +313,11 @@ export class Match {
     } else {
       b.x = wx;
       b.z = wz;
+    }
+    // Standing on a drifting cloud: it carries you along.
+    if (!b.airborne) {
+      const cloud = this.terrain.platformAt(b.x, b.z);
+      if (cloud) { b.x += cloud.vx * dt; b.z += cloud.vz * dt; }
     }
     // Explosion push applies to everyone: a blast can knock anybody into the pond.
     b.x += b.kbX * dt;
@@ -316,12 +339,20 @@ export class Match {
           const d = Math.hypot(dx, dz);
           if (d >= min || d < 1e-5) continue;
           const push = min - d;
+          const nx = dx / d, nz = dz / d;
           // Bunnies stand their ground: blocs barely move them.
-          const wa = a.isBunny && !b.isBunny ? 0.1 : b.isBunny && !a.isBunny ? 0.9 : 0.5;
-          a.x -= (dx / d) * push * wa;
-          a.z -= (dz / d) * push * wa;
-          b.x += (dx / d) * push * (1 - wa);
-          b.z += (dz / d) * push * (1 - wa);
+          let wa = a.isBunny && !b.isBunny ? 0.1 : b.isBunny && !a.isBunny ? 0.9 : 0.5;
+          // Bumping into each other never shoves anyone into water, lava or the sky
+          // (weapons can, on purpose): the one at the edge holds still and the other one gives way.
+          const aEdge = !!this.arena.deadlyAt(a.x - nx * push * wa, a.z - nz * push * wa);
+          const bEdge = !!this.arena.deadlyAt(b.x + nx * push * (1 - wa), b.z + nz * push * (1 - wa));
+          if (aEdge && bEdge) continue;
+          if (aEdge) wa = 0;
+          else if (bEdge) wa = 1;
+          a.x -= nx * push * wa;
+          a.z -= nz * push * wa;
+          b.x += nx * push * (1 - wa);
+          b.z += nz * push * (1 - wa);
         }
       }
       for (const b of live) {
@@ -462,6 +493,19 @@ export class Match {
     this.shake(big ? 0.85 : 0.6);
   }
 
+  /** Light saber: everything flying near (x, z) gets sent back. */
+  deflect(by: Bloc, x: number, z: number, r: number) {
+    let n = 0;
+    for (const w of this.weapons.values()) n += w.deflect?.(by, x, z, r) ?? 0;
+    if (n) this.glow.burst({ x, y: 1, z, count: 12, color: by.team.color, intensity: 3, speed: 4, up: 2, size: 0.08, life: 0.3, gravity: 0 });
+    return n;
+  }
+
+  /** An expanding shockwave ring on the ground. */
+  ring(x: number, z: number, size: number, dur: number) {
+    this.addFx('shock', x, z, size, dur);
+  }
+
   multiHit(n: number, color: number) {
     this.say(n >= 3 ? TEXT.tripleHit : TEXT.doubleHit, 'big', color);
     this.sfx(SFX.double);
@@ -480,11 +524,34 @@ export class Match {
     this.fx.push({ mesh, t: 0, dur, kind, size });
   }
 
+  /** Rolling boulders flatten blocs in their way (jump over them!) and bump bunnies. */
+  private boulderHits(dt: number) {
+    for (const b of this.blocs) {
+      b.boulderHitT = Math.max(0, b.boulderHitT - dt);
+      if (!b.alive || b.airborne) continue;
+      for (const r of this.terrain.boulders) {
+        const dx = b.x - r.x, dz = b.z - r.z, d = Math.hypot(dx, dz);
+        if (d > r.r + b.radius + 0.05 || Math.hypot(r.vx, r.vz) < 0.5) continue;
+        const nx = d > 0.01 ? dx / d : 1, nz = d > 0.01 ? dz / d : 0;
+        if (b.isBunny) {
+          if (b.boulderHitT > 0) continue;
+          b.boulderHitT = 1.5;
+          b.kbX += nx * 8;
+          b.kbZ += nz * 8;
+          this.damageBunny(b, null, nx, nz, 1);
+        } else if (b.shield <= 0) {
+          this.kill(b, null, nx, nz);
+          this.say(TEXT.squashed, b.human !== null ? 'big' : 'small', b.team.color);
+        }
+      }
+    }
+  }
+
   private eaten(b: Bloc) {
+    const kind = this.arena.deadlyAt(b.x, b.z) ?? (b.sink > 0 ? 'quicksand' : 'pond');
     b.state = 'eaten';
     b.view.hit();
-    this.sinking.push({ bloc: b, t: 0 });
-    const kind = this.arena.deadlyAt(b.x, b.z) ?? 'pond';
+    this.sinking.push({ bloc: b, t: 0, kind });
     this.arena.swallow(kind, b.x, b.z, b.isBunny ? 0xffffff : b.team.color, !this.setup.demo);
     if (!b.isBunny) this.weaponFor(b.weapon).onEaten(b);
     if (kind === 'lava') b.view.hit();
@@ -498,8 +565,18 @@ export class Match {
       const s = this.sinking[i];
       s.t += dt;
       const r = s.bloc.view.root;
-      r.position.y = -s.t * 1.1;
-      r.rotation.z = Math.sin(s.t * 30) * 0.15;
+      if (s.kind === 'sky') {
+        // Falling away into the sky, getting smaller and spinning.
+        r.position.y = -4 * s.t * s.t;
+        r.scale.setScalar(Math.max(0.05, 1 - s.t * 0.6));
+        r.rotation.z += dt * 6;
+      } else if (s.kind === 'quicksand') {
+        r.position.y = -0.6 - s.t * 0.6;
+        r.rotation.z = Math.sin(s.t * 12) * 0.08;
+      } else {
+        r.position.y = -s.t * 1.1;
+        r.rotation.z = Math.sin(s.t * 30) * 0.15;
+      }
       if (s.t > 1.6) {
         r.visible = false;
         this.sinking.splice(i, 1);
@@ -551,6 +628,15 @@ export class Match {
   }
 
   private checkEnd(dt: number) {
+    const R = TUNING.rounds;
+    if (!this.suddenDeath && this.time > R.suddenDeath) {
+      this.suddenDeath = true;
+      this.say(TEXT.suddenDeath);
+    }
+    if (this.time > R.timeUp) {
+      this.say(TEXT.timeUp);
+      return this.finish(null);
+    }
     const left = this.teams.filter((t) => !this.eliminated.has(t.id));
     if (left.length <= 1) return this.finish(left[0] ?? null);
     // Nobody left standing on any team: a draw. (Out of ammo still counts: you can punch.)
@@ -571,7 +657,7 @@ export class Match {
   }
 
   dangers() {
-    return [...this.weapons.values()].flatMap((w) => w.dangers());
+    return [...[...this.weapons.values()].flatMap((w) => w.dangers()), ...this.terrain.boulderDangers()];
   }
 
   status(): TeamStatus[] {
@@ -619,9 +705,10 @@ export class Match {
         speed: b.alive ? Math.hypot(b.vx + b.kbX, b.vz + b.kbZ) : 0,
         yaw: b.yaw,
         crouch: b.crouch > 0 ? Math.min(1, (T.jumpCrouch - b.crouch) / 0.25) : 0,
-        jumpY: 4 * T.jumpHeight * k * (1 - k),
+        // Up while jumping, down while sinking in quicksand.
+        jumpY: 4 * T.jumpHeight * k * (1 - k) - b.sink * 0.45,
         // Spear and grenade leave the hand when thrown; bazooka and flamethrower stay.
-        holdingWeapon: b.armed || b.weapon === 'bazooka' || b.weapon === 'machinegun' || b.weapon === 'sword' || (b.weapon === 'flamethrower' && b.fuel > 0),
+        holdingWeapon: b.armed || ['bazooka', 'machinegun', 'sword', 'lightsaber', 'hammer', 'crossbow'].includes(b.weapon) || (b.weapon === 'flamethrower' && b.fuel > 0),
       });
     }
     for (const w of this.weapons.values()) w.render(dt);

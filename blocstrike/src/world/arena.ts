@@ -8,12 +8,15 @@ import { buildGround } from './ground';
 import { Liquids } from './liquids';
 import { Critters } from './critters';
 import { makeProp, makeRemains, type PropModel } from './props';
+import { makeEdgeWall, makeRock } from './nature';
 
 const LIGHTS: Record<Theme, { sky: number; ground: number; hemi: number; sun: number; sunI: number }> = {
   meadow: { sky: 0xd8ecff, ground: 0x40582c, hemi: 1.5, sun: 0xfff0d8, sunI: 2.8 },
   volcano: { sky: 0xffb08a, ground: 0x3a1a10, hemi: 1.1, sun: 0xffc090, sunI: 2.2 },
   jungle: { sky: 0xd8f0c8, ground: 0x203a18, hemi: 1.3, sun: 0xfff2c8, sunI: 2.6 },
   beach: { sky: 0xe0f4ff, ground: 0xa89060, hemi: 1.1, sun: 0xfff6e0, sunI: 2.2 },
+  ruins: { sky: 0xffe8c8, ground: 0x8a6b45, hemi: 1.15, sun: 0xffe2b0, sunI: 2.5 },
+  clouds: { sky: 0xdfeaff, ground: 0x5a7ab0, hemi: 0.75, sun: 0xfff4e0, sunI: 1.7 },
 };
 
 interface PropView {
@@ -57,6 +60,14 @@ function bridgeHalf(style: BridgeState['style'], length: number, width: number) 
     const n = Math.max(2, Math.round(length / 0.42));
     for (let i = 0; i < n; i++) add(new THREE.BoxGeometry(0.36, 0.1, width), plank, -length / 2 + (i + 0.5) * (length / n), 0.05, 0);
     for (const s of [-1, 1]) add(new THREE.BoxGeometry(length, 0.12, 0.12), m(0x7a5530), 0, -0.05, s * (width / 2 - 0.15));
+  } else if (style === 'rainbow') {
+    // Seven glowing stripes.
+    const colors = [0xff3b3b, 0xff9a2a, 0xffe14a, 0x3ddc84, 0x3aa0ff, 0x5c5cff, 0xb05cff];
+    colors.forEach((c, i) => {
+      const mat = new THREE.MeshStandardMaterial({ color: c, roughness: 0.4, emissive: c, emissiveIntensity: 0.35 });
+      mats.push(mat);
+      add(new THREE.BoxGeometry(length, 0.14, width / colors.length), mat, 0, 0, -width / 2 + (i + 0.5) * (width / colors.length));
+    });
   } else {
     const n = Math.max(2, Math.round(width / 0.36));
     const log = m(0x7b5532);
@@ -81,6 +92,8 @@ export class Arena {
   private propViews: PropView[] = [];
   private bridges: BridgeView[] = [];
   private gates: GateView[] = [];
+  private clouds: { mesh: THREE.Group; i: number }[] = [];
+  private boulders: { mesh: THREE.Object3D; i: number }[] = [];
   private navT = 0;
 
   constructor(readonly def: ArenaDef, private particles: Particles, private glow: Particles) {
@@ -135,6 +148,27 @@ export class Arena {
       }
       this.bridges.push({ state, halves, mats });
     }
+
+    // Drifting clouds: a flat top you can stand on, puffs all around.
+    this.terrain.platforms.forEach((p, i) => {
+      const g = new THREE.Group();
+      const shape = new THREE.Shape(p.poly.map(([x, z]) => new THREE.Vector2(x, -z)));
+      const top = new THREE.Mesh(new THREE.ExtrudeGeometry(shape, { depth: 0.5, bevelEnabled: false }).rotateX(-Math.PI / 2).translate(0, -0.5, 0),
+        new THREE.MeshStandardMaterial({ color: 0xe2e9f5, roughness: 1 }));
+      top.receiveShadow = true;
+      g.add(top, makeEdgeWall(p.poly, def.decoSeed + 50 + i, 'cloud'));
+      this.group.add(g);
+      this.clouds.push({ mesh: g, i });
+    });
+    // Rolling boulders.
+    this.terrain.boulders.forEach((b, i) => {
+      const holder = new THREE.Group();
+      const rock = makeRock(b.r, def.decoSeed + 70 + i, 0x9c8058, 0xb08b5e);
+      rock.position.y = b.r * 0.9;
+      holder.add(rock);
+      this.group.add(holder);
+      this.boulders.push({ mesh: holder, i });
+    });
 
     for (const state of this.terrain.gates) {
       const g = new THREE.Group();
@@ -196,7 +230,7 @@ export class Arena {
   /** Game time passes: gates, bridges and tide move; paths are refreshed. Called by the match each tick. */
   step(dt: number) {
     const events = this.terrain.update(dt);
-    if (!this.muted) for (const e of events) (e === 'gate' ? SFX.gate : SFX.bridge)();
+    if (!this.muted) for (const e of events) (e === 'gate' ? SFX.gate : e === 'boulder' ? SFX.boulder : SFX.bridge)();
     for (const p of this.terrain.props) if (p.alive && p.burn > 0) p.burn = Math.max(0, p.burn - dt * 0.3);
     // Fresh paths for computer players when something changed (not more than ~3 times a second).
     this.navT -= dt;
@@ -225,6 +259,24 @@ export class Arena {
       for (const m of v.model.canopy) {
         m.opacity = v.fade;
         m.depthWrite = v.fade > 0.95;
+      }
+    }
+
+    for (const c of this.clouds) {
+      const p = this.terrain.platforms[c.i];
+      c.mesh.position.set(p.ox, Math.sin(time * 1.3 + c.i) * 0.04, p.oz);
+    }
+    for (const v of this.boulders) {
+      const b = this.terrain.boulders[v.i];
+      v.mesh.position.set(b.x, 0, b.z);
+      // Roll: spin around the axis across the direction of travel.
+      const speed = Math.hypot(b.vx, b.vz);
+      if (speed > 0.01) {
+        v.mesh.rotation.y = Math.atan2(b.vx, b.vz);
+        const rock = v.mesh.children[0];
+        rock.rotation.x += (speed * dt) / b.r;
+        // Dust kicked up behind.
+        if (Math.random() < speed * dt * 3) this.particles.burst({ x: b.x - (b.vx / speed) * b.r, y: 0.1, z: b.z - (b.vz / speed) * b.r, count: 1, color: 0xc9a774, speed: 0.8, up: 1, size: 0.2, life: 0.7 });
       }
     }
 

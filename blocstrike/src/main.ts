@@ -17,6 +17,7 @@ import { Menus, keyName, type Screen } from './ui/menus';
 import { Shop } from './ui/shop';
 import { BunnyView } from './entities/bunnyView';
 import { BlocView } from './entities/blocView';
+import { makeHeldWeapon } from './entities/weaponModels';
 import { Thumbnailer } from '@engine/thumbnails';
 import { deviceConfig, save, settings } from './settings';
 import { ARENAS, arenaById } from './data/arenas';
@@ -81,11 +82,14 @@ function applySafeMargin() {
 
 const randomWeapon = (): WeaponId => WEAPON_IDS[Math.floor(Math.random() * WEAPON_IDS.length)];
 
+/** For tests: give every computer player this weapon instead of a random one. */
+let botWeapon: WeaponId | null = null;
+
 /** Weapons for every bloc of both teams: humans get their pick, computer players a random one. */
 function loadouts(humans: number[], picks: WeaponId[] = []): WeaponId[][] {
   return TEAMS.slice(0, 2).map((t) => {
     const mine = humans.map((team, p) => (team === t.id ? p : -1)).filter((p) => p >= 0);
-    return Array.from({ length: TUNING.teams.blocsPerTeam }, (_, i) => (i < mine.length ? picks[mine[i]] : randomWeapon()));
+    return Array.from({ length: TUNING.teams.blocsPerTeam }, (_, i) => (i < mine.length ? picks[mine[i]] : botWeapon ?? randomWeapon()));
   });
 }
 
@@ -391,4 +395,4 @@ function simulate(difficulty: Difficulty = 'normal', runs = 10, weapons?: [Weapo
   return results;
 }
 
-Object.assign(window, { blocstrike: { get match() { return match; }, get arena() { return arena; }, settings, save, startGame, goMenu, simulate, shop, useArena, debug: { Match, get arena() { return arena; }, particles, glow, BunnyView, BlocView, Thumbnailer, TEAMS, synth } } });
+Object.assign(window, { blocstrike: { get match() { return match; }, get arena() { return arena; }, settings, save, startGame, goMenu, simulate, shop, useArena, debug: { Match, get arena() { return arena; }, particles, glow, BunnyView, BlocView, Thumbnailer, TEAMS, synth, makeHeldWeapon, setBotWeapon: (w: WeaponId | null) => { botWeapon = w; } } } });

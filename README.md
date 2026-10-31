@@ -21,7 +21,9 @@ Then press **F** for fullscreen.
 
 Blue vs Red, 3 blocs + 1 baby bunny per team, **best of 5 rounds**. One hit knocks a bloc out; the bunny takes 3 hearts. A team loses the round when its bunny goes poof. Stand on a fallen teammate for 3 s to revive them; bunnies can revive too, in 2 s (everyone, bunnies included, can revive once per round). Don't fall in the pond: piranhas. Winning a match gives +10 bloccoins to spend in the **Shop** (bloc skins, hats, weapons — one shared wallet for both players).
 
-**Arenas** (bought in the Shop, picked in **Play**): 🌳 Grassy Pond (piranha pond), 🌋 Volcano (island in lava, a sliding bridge that pulls apart), 🌴 Jungle (crocodile river, stone gates that rise and fall on the log bridges), 🏖️ Beach (sharks, a lagoon, a tide that comes in and out). Explosions break trees, crates and sandcastles (rocks and pillars take two); flames burn trees and crates down. Everything grows back next round.
+**Arenas** (bought in the Shop, picked in **Play**): 🌳 Grassy Pond (piranha pond), 🌋 Volcano (island in lava, a sliding bridge that pulls apart), 🌴 Jungle (crocodile river, stone gates that rise and fall on the log bridges), 🏖️ Beach (sharks, a lagoon, a tide that comes in and out), 🏛️ Rocky Ruins (crumbling walls, quicksand that swallows you slowly — get out in time — and rolling boulders to jump over), ☁️ Cloud Heaven (floating islands, rainbow bridges, drifting clouds you can ride; fall off and you're gone). Explosions and the hammer break trees, crates, walls and sandcastles (rocks and pillars take two); flames burn trees and crates down. Everything grows back next round.
+
+Computer players revive teammates depending on difficulty (easy: never, normal: sometimes and only when safe, hard: always). After 2 minutes a round goes to **sudden death** (everyone goes for the bunnies); after 4 it's a draw.
 
 **Jump** (the old dash button): legs bend for 1 s, then a hop. In the air, spears, bullets, swords and flames pass underneath and you can hop over narrow water or lava; explosions still hit. 2 s before the next jump.
 
@@ -31,6 +33,9 @@ Weapons (you pick yours in **Play**; computer players get random ones for the wh
 |---|---|
 | 🗡️ Spear | Throw, then walk over it to pick it up. Pierces up to 2 blocs. |
 | ⚔️ Sword | Always in your hand, no reload. Slashes everything just in front (teammates too). |
+| ✨ Light Saber | Like the sword with longer reach and faster swings. Slash at spears, bolts, bullets and rockets to send them back. |
+| 🔨 Hammer | Slow smash: knocks out whoever is where it lands, shoves everyone around (into the water?), breaks props. |
+| 🏹 Crossbow | Fast bolts that fly really far and pierce two blocs. Reloads by itself (no fetching). |
 | 🚀 Bazooka | Rocket with a small blast that also pushes people (into the pond!). 3 s reload. |
 | 💣 Big Grenade | **Hold** to throw further, release to throw. Bigger blast, 2 bunny hearts per hit, 5 per round. |
 | 🔥 Flamethrower | **Hold** to spray. Short range, burns teammates too. 20 s of fuel per round. |
@@ -78,7 +83,8 @@ node tools/mechanics.mjs      # stages a spear double hit and a piranha attack
 node tools/showcase.mjs       # stages each weapon, punching, the bunny and the shop (incl. a purchase)
 node tools/closeups.mjs       # close-up renders of the bunny and skin/hat combos
 node tools/arenas.mjs         # starts a round in every arena and screenshots it
-node tools/features.mjs       # 16 staged checks: jumping lava, sliding bridge, gates, breaking props, sword, machine gun, bunny hops
+node tools/features.mjs       # 30 staged checks: lava jumps, bridges, gates, quicksand, boulders, clouds, every weapon, bunny hops
+node tools/stuck.mjs 15 110   # hunts for rounds that never end, every arena and difficulty, and dumps where everyone is
 node tools/simulate.mjs arenas 10            # computer-only rounds in every arena (random weapons)
 node tools/simulate.mjs weapons 6 jungle     # every weapon against every weapon in one arena
 ```

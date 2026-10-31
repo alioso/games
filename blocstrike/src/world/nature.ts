@@ -144,11 +144,14 @@ export function makeFlowers(points: { x: number; z: number; color: number }[]) {
 }
 
 /** A wall of bushy balls (or sand dunes) just outside the arena outline. */
-export function makeEdgeWall(poly: [number, number][], seed: number, style: 'hedge' | 'jungle' | 'dunes', skip?: (x: number, z: number) => boolean) {
+/** Edge styles: walls of bushes/jungle/dunes/rocks outside the arena, or puffy cloud rims under island edges. */
+export type EdgeStyle = 'hedge' | 'jungle' | 'dunes' | 'rocks' | 'cloud';
+
+export function makeEdgeWall(poly: [number, number][], seed: number, style: EdgeStyle, skip?: (x: number, z: number) => boolean) {
   const rand = rng(seed);
   const pts: { x: number; z: number; r: number }[] = [];
-  const out = style === 'jungle' ? 1.3 : 1.0;
-  const spacing = style === 'jungle' ? 1.0 : 0.8;
+  const out = style === 'jungle' ? 1.3 : style === 'cloud' ? -0.2 : style === 'rocks' ? 1.1 : 1.0;
+  const spacing = style === 'jungle' ? 1.0 : style === 'cloud' ? 0.7 : 0.8;
   // Walk the outline at a fixed spacing, pushing each ball outward along the edge normal.
   let carry = 0;
   for (let i = 0; i < poly.length; i++) {
@@ -161,18 +164,21 @@ export function makeEdgeWall(poly: [number, number][], seed: number, style: 'hed
       const x = ax + (bx - ax) * t + nx * out + rand.range(-0.15, 0.15);
       const z = az + (bz - az) * t + nz * out + rand.range(-0.15, 0.15);
       if (skip?.(x, z)) continue;
-      pts.push({ x, z, r: style === 'jungle' ? rand.range(0.9, 1.4) : rand.range(0.55, 0.8) });
+      pts.push({ x, z, r: style === 'jungle' ? rand.range(0.9, 1.4) : style === 'cloud' ? rand.range(0.6, 1.0) : style === 'rocks' ? rand.range(0.7, 1.1) : rand.range(0.55, 0.8) });
     }
     carry = (carry - len) % spacing;
     if (carry < 0) carry += spacing;
   }
   const palette = style === 'jungle' ? [0x1b5e20, 0x2e7d32, 0x145a1c, 0x236b28]
-    : style === 'dunes' ? [0xcdb07a, 0xc4a670, 0xd6ba84] : [0x2e7d32, 0x388e3c, 0x2b6e2f, 0x43a047];
+    : style === 'dunes' ? [0xcdb07a, 0xc4a670, 0xd6ba84]
+    : style === 'rocks' ? [0xb08b5e, 0x9c7a50, 0xc29d6c, 0x8a6b45]
+    : style === 'cloud' ? [0xe6ecf6, 0xd8e2f2, 0xeef2fa] : [0x2e7d32, 0x388e3c, 0x2b6e2f, 0x43a047];
   const mesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), flat(0xffffff), pts.length);
   const d = new THREE.Object3D();
   const c = new THREE.Color();
   pts.forEach((p, i) => {
-    d.position.set(p.x, p.r * (style === 'dunes' ? 0.15 : 0.55), p.z);
+    // Cloud rims hang just below the island's edge, like the fluffy underside of a cloud.
+    d.position.set(p.x, style === 'cloud' ? -0.35 : p.r * (style === 'dunes' ? 0.15 : 0.55), p.z);
     d.rotation.set(rand.next() * 3, rand.next() * 3, 0);
     d.scale.set(p.r, p.r * (style === 'dunes' ? 0.5 : 0.85), p.r);
     d.updateMatrix();

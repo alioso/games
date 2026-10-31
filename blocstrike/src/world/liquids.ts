@@ -12,6 +12,8 @@ const LOOK: Record<LiquidKind, { deep: number[]; shallow: number[]; foam: number
   river: { deep: [0.07, 0.24, 0.17], shallow: [0.25, 0.48, 0.3], foam: [0.75, 0.82, 0.7] },
   sea: { deep: [0.02, 0.22, 0.48], shallow: [0.15, 0.72, 0.78], foam: [1, 1, 1] },
   lava: { deep: [0.1, 0.025, 0.015], shallow: [2.2, 0.6, 0.08], foam: [2.6, 1.2, 0.25] },
+  quicksand: { deep: [0.36, 0.26, 0.13], shallow: [0.7, 0.55, 0.32], foam: [0.82, 0.68, 0.42] },
+  sky: { deep: [0.06, 0.22, 0.6], shallow: [0.16, 0.42, 0.85], foam: [0.62, 0.7, 0.82] },
 };
 
 const VERT = /* glsl */ `
@@ -30,7 +32,7 @@ const FRAG = /* glsl */ `
   uniform float uFull;     // everything is liquid (the lava sea around the volcano)
   uniform float uUseShore;
   uniform vec4 uShore;     // z, amp, seed, tide offset
-  uniform float uLava;
+  uniform float uMode; // 0 water, 1 lava, 2 quicksand, 3 sky far below
   uniform vec3 uDeep, uShallow, uFoam;
   varying vec3 vWorld;
 
@@ -66,7 +68,20 @@ const FRAG = /* glsl */ `
     if (inside < 0.5) discard;
 
     vec3 col;
-    if (uLava > 0.5) {
+    if (uMode > 2.5) {
+      // Looking down past the islands: blue sky with clouds drifting far below.
+      vec2 q = p * 0.06 + vec2(uTime * 0.008, uTime * 0.004);
+      float c = smoothstep(0.45, 0.75, fbm(q + fbm(q * 2.0)));
+      col = mix(mix(uShallow, uDeep, smoothstep(-30.0, 30.0, p.y)), uFoam, c * 0.85);
+    } else if (uMode > 1.5) {
+      // Quicksand: slow swirls, darker towards the middle.
+      vec2 q = p * 0.9;
+      float a = uTime * 0.15;
+      q = mat2(cos(a), -sin(a), sin(a), cos(a)) * q;
+      float n = fbm(q + fbm(q * 1.7 - uTime * 0.05));
+      col = mix(uDeep, uShallow, smoothstep(0.0, 0.9, edge) * 0.7 + n * 0.45);
+      col = mix(col, uFoam, smoothstep(0.85, 1.0, edge) * 0.5);
+    } else if (uMode > 0.5) {
       // Dark crust plates drifting slowly, glowing veins between them, a few molten pools.
       vec2 q = p * 0.42 + vec2(uTime * 0.04, -uTime * 0.025);
       float w = fbm(q + 1.5 * fbm(q * 1.3 + vec2(0.0, uTime * 0.05)));
@@ -121,6 +136,7 @@ export class Liquids {
       this.addFullPlane(mat, 0.03);
     }
     if (def.edge === 'lava') this.addFullPlane(this.material('lava', { full: true }), -0.45);
+    if (def.edge === 'sky') this.addFullPlane(this.material('sky', { full: true }), -14);
   }
 
   private addFullPlane(mat: THREE.ShaderMaterial, y: number) {
@@ -179,7 +195,7 @@ export class Liquids {
         uFull: { value: o.full ? 1 : 0 },
         uUseShore: { value: o.shore ? 1 : 0 },
         uShore: { value: new THREE.Vector4(s?.z ?? 0, s?.amp ?? 0, s?.seed ?? 0, 0) },
-        uLava: { value: kind === 'lava' ? 1 : 0 },
+        uMode: { value: kind === 'lava' ? 1 : kind === 'quicksand' ? 2 : kind === 'sky' ? 3 : 0 },
         uDeep: { value: new THREE.Vector3(...look.deep) },
         uShallow: { value: new THREE.Vector3(...look.shallow) },
         uFoam: { value: new THREE.Vector3(...look.foam) },

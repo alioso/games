@@ -4,11 +4,14 @@
 
 import type { Shape } from '../world/shapes';
 
-export type Theme = 'meadow' | 'volcano' | 'jungle' | 'beach';
-/** What lives in each kind of liquid: piranhas, nothing (it's lava), crocodiles, sharks. */
-export type LiquidKind = 'pond' | 'lava' | 'river' | 'sea';
+export type Theme = 'meadow' | 'volcano' | 'jungle' | 'beach' | 'ruins' | 'clouds';
+/**
+ * The deadly stuff: ponds (piranhas), lava, rivers (crocodiles), sea (sharks),
+ * quicksand (swallows you slowly) and sky (the drop around the cloud islands).
+ */
+export type LiquidKind = 'pond' | 'lava' | 'river' | 'sea' | 'quicksand' | 'sky';
 
-export type PropKind = 'tree' | 'jungleTree' | 'palm' | 'deadTree' | 'rock' | 'crate' | 'pillar' | 'sandcastle';
+export type PropKind = 'tree' | 'jungleTree' | 'palm' | 'deadTree' | 'rock' | 'crate' | 'pillar' | 'sandcastle' | 'ruinWall' | 'cactus' | 'cloudBush';
 
 export interface PropDef {
   kind: PropKind;
@@ -29,7 +32,7 @@ export interface BridgeDef {
   angle: number;
   length: number;
   width: number;
-  style: 'wood' | 'stone' | 'log';
+  style: 'wood' | 'stone' | 'log' | 'rainbow';
   /** Slides in and out over time (seconds per full cycle). */
   moving?: { period: number; offset: number };
 }
@@ -44,6 +47,28 @@ export interface GateDef {
   offset: number;
 }
 
+/** A cloud you can stand on that drifts back and forth, carrying whoever is on it. */
+export interface PlatformDef {
+  /** The cloud's shape where it starts. */
+  shape: Shape;
+  /** How far it drifts (there and back). */
+  dx: number;
+  dz: number;
+  period: number;
+  offset: number;
+}
+
+/** A boulder rolling back and forth between two points. Anyone it runs over is knocked out (jump over it!). */
+export interface BoulderDef {
+  ax: number;
+  az: number;
+  bx: number;
+  bz: number;
+  r: number;
+  period: number;
+  offset: number;
+}
+
 export interface ArenaDef {
   id: string;
   name: string;
@@ -54,15 +79,17 @@ export interface ArenaDef {
   /** Camera framing (and where flying things stop). */
   halfW: number;
   halfD: number;
-  /** The ground you can walk on. */
-  land: Shape;
-  /** What's past the edge of the land: a wall of bushes/jungle/dunes, or deadly lava. */
-  edge: 'hedge' | 'jungle' | 'dunes' | 'lava';
+  /** The ground you can walk on (several shapes for islands). */
+  land: Shape | Shape[];
+  /** What's past the edge of the land: a wall (bushes, jungle, dunes, rocks), or a deadly drop (lava, sky). */
+  edge: 'hedge' | 'jungle' | 'dunes' | 'rocks' | 'lava' | 'sky';
   liquids: LiquidDef[];
   /** Sea along the bottom edge, with a tide that comes in and out. */
   shore?: { z: number; amp: number; seed: number; tide: number; period: number };
   bridges: BridgeDef[];
   gates: GateDef[];
+  platforms?: PlatformDef[];
+  boulders?: BoulderDef[];
   /** Left-half props, copied to the right half by `symmetry`. */
   props: PropDef[];
   /** Props exactly on the middle line (not copied). */
@@ -209,6 +236,94 @@ export const ARENAS: ArenaDef[] = [
     symmetry: 'mirrorX',
     spawn: { blocs: [[-12.5, -5.5], [-13, -2], [-12, 1.5]], bunny: [-15, -2] },
     decoSeed: 23,
+  },
+  {
+    id: 'ruins',
+    name: 'Rocky Ruins',
+    icon: '🏛️',
+    description: 'Crumbling walls to hide behind, quicksand pits, and boulders that roll by. Jump over them!',
+    price: 100,
+    theme: 'ruins',
+    halfW: 17.5,
+    halfD: 10.5,
+    land: { type: 'blob', x: 0, z: 0, rx: 17.6, rz: 10.6, seed: 3, wobble: 0.6 },
+    edge: 'rocks',
+    liquids: [
+      { kind: 'quicksand', shape: { type: 'blob', x: 0, z: 0, rx: 3.2, rz: 2.3, seed: 6 } },
+      { kind: 'quicksand', shape: { type: 'blob', x: -8, z: 5.2, rx: 1.6, rz: 1.2, seed: 2 } },
+      { kind: 'quicksand', shape: { type: 'blob', x: 8, z: 5.2, rx: 1.6, rz: 1.2, seed: 2 } },
+    ],
+    bridges: [],
+    gates: [],
+    boulders: [
+      { ax: -11, az: -7.6, bx: 11, bz: -7.6, r: 0.95, period: 14, offset: 0 },
+      { ax: 11, az: 7.8, bx: -11, bz: 7.8, r: 0.95, period: 14, offset: 3.5 },
+    ],
+    props: [
+      // A crumbling wall in front of each base, and a broken corner further forward.
+      { kind: 'ruinWall', x: -10, z: -3, r: 0.5 },
+      { kind: 'ruinWall', x: -10, z: -2, r: 0.5 },
+      { kind: 'ruinWall', x: -10, z: 2, r: 0.5 },
+      { kind: 'ruinWall', x: -10, z: 3, r: 0.5 },
+      { kind: 'ruinWall', x: -5.5, z: -3.8, r: 0.5 },
+      { kind: 'ruinWall', x: -4.5, z: -3.8, r: 0.5 },
+      { kind: 'ruinWall', x: -5.5, z: -2.8, r: 0.5 },
+      { kind: 'pillar', x: -6.5, z: 2.4, r: 0.55 },
+      { kind: 'pillar', x: -13.5, z: -5.5, r: 0.55 },
+      { kind: 'cactus', x: -14.5, z: 4.4, r: 0.4 },
+      { kind: 'cactus', x: -3.2, z: 4.6, r: 0.4 },
+      { kind: 'rock', x: -12.5, z: 5.8, r: 0.8 },
+    ],
+    centerProps: [],
+    symmetry: 'mirrorX',
+    spawn: { blocs: [[-12.5, -3.8], [-13, 0], [-12.5, 3.8]], bunny: [-15, 0] },
+    decoSeed: 31,
+  },
+  {
+    id: 'clouds',
+    name: 'Cloud Heaven',
+    icon: '☁️',
+    description: 'Floating islands joined by rainbow bridges. Clouds drift by. Don\'t fall off!',
+    price: 100,
+    theme: 'clouds',
+    halfW: 17.5,
+    halfD: 10,
+    land: [
+      { type: 'blob', x: -11, z: 0, rx: 5.6, rz: 6.6, seed: 2, wobble: 0.8 },
+      { type: 'blob', x: 11, z: 0, rx: 5.6, rz: 6.6, seed: 2, wobble: 0.8 },
+      { type: 'blob', x: 0, z: 0, rx: 3.6, rz: 3.0, seed: 5, wobble: 0.8 },
+      { type: 'blob', x: 0, z: -7.6, rx: 2.8, rz: 1.8, seed: 8, wobble: 0.6 },
+      { type: 'blob', x: 0, z: 7.6, rx: 2.8, rz: 1.8, seed: 8, wobble: 0.6 },
+    ],
+    edge: 'sky',
+    liquids: [],
+    bridges: [
+      { x: -4.6, z: 0, angle: 0, length: 4.2, width: 1.7, style: 'rainbow' },
+      { x: 4.6, z: 0, angle: 0, length: 4.2, width: 1.7, style: 'rainbow' },
+      { x: -5.35, z: -6.15, angle: -0.35, length: 7.2, width: 1.6, style: 'rainbow' },
+      { x: 5.35, z: -6.15, angle: 0.35, length: 7.2, width: 1.6, style: 'rainbow' },
+      { x: -5.35, z: 6.15, angle: 0.35, length: 7.2, width: 1.6, style: 'rainbow' },
+      { x: 5.35, z: 6.15, angle: -0.35, length: 7.2, width: 1.6, style: 'rainbow' },
+    ],
+    gates: [],
+    platforms: [
+      // Drifting clouds between the middle island and the small ones.
+      { shape: { type: 'blob', x: -2.6, z: -4.4, rx: 1.5, rz: 1.35, seed: 4 }, dx: 5.2, dz: 0, period: 10, offset: 0 },
+      { shape: { type: 'blob', x: 2.6, z: 4.4, rx: 1.5, rz: 1.35, seed: 4 }, dx: -5.2, dz: 0, period: 10, offset: 0 },
+    ],
+    props: [
+      { kind: 'cloudBush', x: -13.5, z: -3.8, r: 0.6 },
+      { kind: 'cloudBush', x: -8, z: 3.6, r: 0.6 },
+      { kind: 'pillar', x: -9, z: -3.2, r: 0.5 },
+      { kind: 'pillar', x: -12.8, z: 4.2, r: 0.5 },
+    ],
+    centerProps: [
+      { kind: 'cloudBush', x: 0, z: -1.6, r: 0.6 },
+      { kind: 'cloudBush', x: 0, z: 1.6, r: 0.6 },
+    ],
+    symmetry: 'mirrorX',
+    spawn: { blocs: [[-11.5, -3.6], [-12.5, 0], [-11.5, 3.6]], bunny: [-14.6, 0] },
+    decoSeed: 17,
   },
 ];
 

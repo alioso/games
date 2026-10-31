@@ -117,9 +117,9 @@ export class Shop {
     const g = cv.getContext('2d')!;
     const scale = Math.min(w / (def.halfW * 2 + 2), h / (def.halfD * 2 + 2));
     const px = (x: number) => w / 2 + x * scale, pz = (z: number) => h / 2 + z * scale;
-    const LAND: Record<string, string> = { meadow: '#5aa83f', volcano: '#4a3a34', jungle: '#3f6a2a', beach: '#ead39c' };
-    const LIQ: Record<string, string> = { pond: '#3aa0c0', river: '#3f7a5a', sea: '#2a8fd0', lava: '#ff6a1a' };
-    g.fillStyle = def.edge === 'lava' ? LIQ.lava : def.theme === 'beach' ? '#d9bf86' : '#1d3d1a';
+    const LAND: Record<string, string> = { meadow: '#5aa83f', volcano: '#4a3a34', jungle: '#3f6a2a', beach: '#ead39c', ruins: '#c9a774', clouds: '#eef2fa' };
+    const LIQ: Record<string, string> = { pond: '#3aa0c0', river: '#3f7a5a', sea: '#2a8fd0', lava: '#ff6a1a', quicksand: '#9c7a4a', sky: '#3a7fd0' };
+    g.fillStyle = def.edge === 'lava' ? LIQ.lava : def.edge === 'sky' ? LIQ.sky : def.theme === 'beach' ? '#d9bf86' : def.theme === 'ruins' ? '#8a6b45' : '#1d3d1a';
     g.fillRect(0, 0, w, h);
     for (let y = 0; y < h; y += 2) {
       for (let x = 0; x < w; x += 2) {
@@ -131,8 +131,22 @@ export class Shop {
         g.fillRect(x, y, 2, 2);
       }
     }
+    // Boulder lanes and drifting clouds.
+    g.lineCap = 'round';
+    for (const b of t.boulders) {
+      g.strokeStyle = 'rgba(90,65,35,0.8)';
+      g.lineWidth = b.r * 2 * scale;
+      g.beginPath(); g.moveTo(px(b.ax), pz(b.az)); g.lineTo(px(b.bx), pz(b.bz)); g.stroke();
+    }
+    g.fillStyle = '#ffffff';
+    for (const p of t.platforms) {
+      g.beginPath();
+      p.poly.forEach(([x, z], i) => (i ? g.lineTo(px(p.cx + x), pz(p.cz + z)) : g.moveTo(px(p.cx + x), pz(p.cz + z))));
+      g.fill();
+    }
     g.fillStyle = '#b08850';
     for (const b of t.bridges) {
+      if (b.style === 'rainbow') g.fillStyle = '#ff9ad5';
       g.save();
       g.translate(px(b.box.x), pz(b.box.z));
       g.rotate(b.box.angle);

@@ -19,8 +19,8 @@ await wait(1500);
 async function stage(arena, weapon, x, z) {
   await ev(([arena, weapon]) => {
     const { settings, startGame } = window.blocstrike;
-    Object.assign(settings, { players: 1, ownedArenas: ['grassy-pond', 'volcano', 'jungle', 'beach'], arena });
-    settings.ownedWeapons = ['spear', 'sword', 'bazooka', 'grenade', 'flamethrower', 'machinegun'];
+    Object.assign(settings, { players: 1, ownedArenas: ['grassy-pond', 'volcano', 'jungle', 'beach', 'ruins', 'clouds'], arena });
+    settings.ownedWeapons = ['spear', 'sword', 'lightsaber', 'hammer', 'crossbow', 'bazooka', 'grenade', 'flamethrower', 'machinegun'];
     settings.weapons[0] = weapon;
     startGame();
   }, [arena, weapon]);
@@ -165,6 +165,102 @@ const hops = await ev(() => {
   return hopped;
 });
 check('H1 bunnies hop out of the way of spears most of the time', hops >= 10, `${hops}/20`);
+
+// I. Quicksand: slows you and swallows you slowly; you can get out in time.
+await stage('ruins', 'spear', -2.6, 0);
+await page.keyboard.down('KeyD');
+await wait(450);
+await page.keyboard.up('KeyD');
+s = await p1();
+const sinking = await ev(() => window.blocstrike.match.human(0).sink);
+check('I1 quicksand grabs you but not straight away', s.state === 'alive' && sinking > 0, `sink=${sinking.toFixed(2)}`);
+await page.keyboard.down('KeyA');
+await wait(900);
+await page.keyboard.up('KeyA');
+check('I2 you can struggle out in time', (await p1()).state === 'alive');
+await ev(() => { const p = window.blocstrike.match.human(0); p.x = 0; p.z = 0; });
+await wait(1900);
+await shot('quicksand');
+check('I3 stay in and it swallows you', (await p1()).state === 'eaten');
+
+// J. Boulders flatten blocs in their way, but not jumping ones.
+await stage('ruins', 'spear', -12, 0);
+const squashed = await ev(() => {
+  const m = window.blocstrike.match, t = window.blocstrike.arena.terrain, b = t.boulders[0];
+  const red = m.blocs.find((x) => x.team.id === 1 && !x.isBunny);
+  red.x = b.x + Math.sign(b.vx || 1) * 1.2; red.z = b.z;
+  return red.id;
+});
+await wait(900);
+check('J1 a rolling boulder squashes a bloc', (await stateOf(squashed)) === 'dead');
+const jumper = await ev(() => {
+  const m = window.blocstrike.match, b = window.blocstrike.arena.terrain.boulders[0];
+  const p = m.human(0);
+  p.x = b.x; p.z = b.z + 0.1; p.air = 0.5; p.jumpX = 0; p.jumpZ = 0;
+  return p.id;
+});
+await wait(250);
+await shot('boulder');
+check('J2 jumping over a boulder is safe', (await stateOf(jumper)) === 'alive');
+
+// K. Clouds: a drifting cloud carries you; stepping off an island drops you into the sky.
+await stage('clouds', 'spear', -12, 0);
+const ride = await ev(() => {
+  const m = window.blocstrike.match, c = window.blocstrike.arena.terrain.platforms[0];
+  const p = m.human(0);
+  p.x = c.ox; p.z = c.oz;
+  return p.x;
+});
+await wait(1500);
+s = await p1();
+check('K1 a drifting cloud carries you along', s.state === 'alive' && Math.abs(s.x - ride) > 0.5, `moved ${(s.x - ride).toFixed(2)}`);
+await ev(() => { const p = window.blocstrike.match.human(0); p.x = -12; p.z = 4.5; });
+await page.keyboard.down('KeyS');
+await wait(1200);
+await page.keyboard.up('KeyS');
+await wait(300);
+await shot('sky-fall');
+check('K2 walking off the edge drops you into the sky', (await p1()).state === 'eaten');
+
+// L. Light saber sends a spear back.
+await ev(() => window.blocstrike.debug.setBotWeapon('spear'));
+await stage('grassy-pond', 'lightsaber', -10, -4);
+await ev(() => window.blocstrike.debug.setBotWeapon(null));
+await ev(() => {
+  const m = window.blocstrike.match;
+  const red = m.blocs.find((x) => x.team.id === 1 && !x.isBunny);
+  const sp = m.weapons.get('spear').spears.find((s) => s.owner === red);
+  red.armed = false;
+  sp.launch(-7.6, -4, -1, 0);
+  window.__spear = sp;
+});
+await page.keyboard.press('Space');
+await wait(60);
+const dir = await ev(() => window.__spear.dirX);
+check('L1 the light saber sends a spear back', dir > 0, `dirX=${dir}`);
+
+// M. Hammer: knocks out the bloc where it lands, pushes the one further away, breaks a tree.
+await stage('grassy-pond', 'hammer', -9.6, -6.2);
+const hit1 = await place(1, -8.2, -5.6);
+const pushed = await place(1, -6.6, -7.0, 1);
+const before = await ev((id) => { const b = window.blocstrike.match.blocs.find((x) => x.id === id); return [b.x, b.z]; }, pushed);
+await page.keyboard.press('Space');
+await wait(400);
+await shot('hammer');
+const after = await ev((id) => { const b = window.blocstrike.match.blocs.find((x) => x.id === id); return [b.x, b.z, b.state]; }, pushed);
+check('M1 hammer knocks out the bloc it lands on', (await stateOf(hit1)) === 'dead');
+check('M2 hammer shockwave pushes others back', Math.hypot(after[0] - before[0], after[1] - before[1]) > 0.5 && after[2] === 'alive', `moved ${Math.hypot(after[0] - before[0], after[1] - before[1]).toFixed(2)}`);
+check('M3 hammer breaks the tree it hits', (await tree()) === false);
+
+// N. Crossbow: long range, pierces two, reloads by itself.
+await stage('grassy-pond', 'crossbow', -13, -9);
+const c1 = await place(1, -4, -9), c2 = await place(1, -3, -9, 1);
+await page.keyboard.press('Space');
+await wait(600);
+check('N1 crossbow bolt flies far and pierces two blocs', (await stateOf(c1)) === 'dead' && (await stateOf(c2)) === 'dead');
+check('N2 crossbow reloads by itself', (await ev(() => window.blocstrike.match.human(0).armed)) === false);
+await wait(3000); // (a double hit slows time down for a moment)
+check('N3 …and is ready again', (await ev(() => window.blocstrike.match.human(0).armed)) === true);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 console.log(errors.length ? errors.slice(0, 5).join('\n') : 'no errors');

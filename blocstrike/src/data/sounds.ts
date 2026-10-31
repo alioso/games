@@ -100,6 +100,25 @@ export const SFX = {
     synth.play(['slice', 'slice2'], { vol: 0.5, rate: 1.1 });
     whoosh(0.22, 900, 3000, 0.14);
   },
+  saber() {
+    // Hum and swoosh.
+    synth.tone({ freq: 110, to: 220, dur: 0.25, type: 'sawtooth', vol: 0.12, wet: 0.3 });
+    synth.tone({ freq: 165, to: 330, dur: 0.22, type: 'sawtooth', vol: 0.08, wet: 0.3 });
+    whoosh(0.2, 700, 2600, 0.18);
+  },
+  deflect() {
+    synth.play('shield', { vol: 0.6, rate: 1.4 });
+    synth.play('metalHit', { vol: 0.4, rate: 1.5 });
+  },
+  smash() {
+    synth.play('boomLow', { vol: 0.7, rate: 1.3 });
+    synth.play(['rockBreak', 'rockBreak2'], { vol: 0.6, rate: 0.8 });
+    synth.play(S('punchHeavy', 3), { vol: 0.7, rate: 0.7 });
+  },
+  crossbow() {
+    synth.play('draw', { vol: 0.5, rate: 1.4 });
+    synth.noise({ dur: 0.12, freq: 2200, to: 900, q: 2, vol: 0.25 });
+  },
   swordHit() {
     synth.play('metalHit', { vol: 0.6 });
     synth.play(S('punchHeavy', 3), { vol: 0.6 });
@@ -131,6 +150,18 @@ export const SFX = {
   gate() {
     synth.play(['rockBreak', 'rockBreak2'], { vol: 0.35, rate: 0.6 });
     synth.noise({ dur: 1.2, freq: 120, to: 90, q: 0.5, vol: 0.35, attack: 0.3, wet: 0.3 });
+  },
+  boulder() {
+    synth.play(['rockBreak', 'rockBreak2'], { vol: 0.25, rate: 0.5 });
+    synth.noise({ dur: 1.5, freq: 90, to: 70, q: 0.5, vol: 0.25, attack: 0.4, wet: 0.3 });
+  },
+  slurp() {
+    synth.play('slime', { vol: 0.6, rate: 0.6 });
+    synth.noise({ dur: 0.9, freq: 400, to: 150, q: 0.8, vol: 0.3, wet: 0.2 });
+  },
+  fall() {
+    synth.tone({ freq: 900, to: 120, dur: 1.2, type: 'sine', vol: 0.18, wet: 0.5 });
+    whoosh(0.25, 1800, 300, 0.9);
   },
   bridge() {
     synth.play('creak', { vol: 0.5, rate: 0.8 });
