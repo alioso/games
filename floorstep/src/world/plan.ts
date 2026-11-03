@@ -294,6 +294,11 @@ function doorZones(room: Room, doors: Door[]) {
   return zones;
 }
 
+/** Showpieces: one per floor is plenty. */
+const ONE_PER_FLOOR: FurnitureKind[] = ['piano', 'clock'];
+/** Knick-knacks: no more than two per room, so rooms look like what they are. */
+const DECOR: FurnitureKind[] = ['painting', 'plant', 'lamp', 'vase', 'clock', 'candles'];
+
 function furnish(R: Rand, rooms: Room[], doors: Door[], windows: Win[], start: { x: number; z: number }): Piece[] {
   const pieces: Piece[] = [];
   for (const room of rooms) {
@@ -369,7 +374,15 @@ function furnish(R: Rand, rooms: Room[], doors: Door[], windows: Win[], start: {
     for (const k of style.center ?? []) tryPlace(k);
     const area = (inner.x1 - inner.x0) * (inner.z1 - inner.z0);
     const extra = Math.round(area / 10) + Math.floor(R.next() * 2);
-    for (let i = 0; i < extra; i++) tryPlace(R.pick(style.maybe));
+    // Extras come out of a bag, so nothing doubles up unless the room says it can.
+    const bag = [...style.maybe];
+    for (let i = 0; i < extra && bag.length; i++) {
+      const k = bag.splice(Math.floor(R.next() * bag.length), 1)[0];
+      if (style.repeat?.includes(k)) bag.push(k);
+      if (ONE_PER_FLOOR.includes(k) && pieces.some((p) => p.kind === k)) continue;
+      if (DECOR.includes(k) && mine.filter((p) => DECOR.includes(p.kind)).length >= 2) continue;
+      tryPlace(k);
+    }
     // Every room gets something to see by.
     if (!mine.some((p) => FURNITURE[p.kind].light)) tryPlace(R.next() < 0.5 ? 'lamp' : 'candles');
     // Tables come with chairs.

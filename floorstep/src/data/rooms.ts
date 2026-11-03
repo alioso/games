@@ -25,8 +25,10 @@ export interface RoomStyle {
   walls: WallStyle[];
   /** Always placed (in this order, first ones get the best spots). */
   must: FurnitureKind[];
-  /** A few of these are added at random. */
+  /** A few of these are added at random, each at most once... */
   maybe: FurnitureKind[];
+  /** ...except these, which a room can have several of (crates in the storage room). */
+  repeat?: FurnitureKind[];
   center?: FurnitureKind[];
   /** Big rooms suit these types when two cells merge. */
   big?: boolean;
@@ -40,14 +42,15 @@ export const ROOMS: Record<RoomType, RoomStyle> = {
     floor: { kind: 'planks', a: '#6e4428', b: '#5e3820' },
     walls: [{ paper: '#4f6b4a', accent: '#5f7d58', pattern: 'stripes', panel: '#4a2e1c' }],
     must: ['coatrack'],
-    maybe: ['chest', 'painting', 'plant', 'clock', 'lamp', 'vase'],
+    maybe: ['chest', 'painting', 'plant', 'clock', 'vase'],
   },
   kitchen: {
     name: 'Kitchen',
     floor: { kind: 'tiles', a: '#e8dcc0', b: '#3b3433' },
     walls: [{ paper: '#d9c27a', accent: '#c9ad5e', pattern: 'tiles', panel: '#7c5532' }],
     must: ['oven', 'fridge', 'counter', 'counter', 'sinkCab'],
-    maybe: ['barrel', 'trash', 'sack', 'crate', 'candles'],
+    maybe: ['barrel', 'trash', 'sack', 'crate', 'counter'],
+    repeat: ['counter'],
     center: ['table'],
   },
   bedroom: {
@@ -58,7 +61,7 @@ export const ROOMS: Record<RoomType, RoomStyle> = {
       { paper: '#8f5c6e', accent: '#a56f82', pattern: 'dots', panel: '#5a3820' },
     ],
     must: ['bed', 'wardrobe'],
-    maybe: ['dresser', 'chest', 'laundry', 'painting', 'lamp', 'plant'],
+    maybe: ['dresser', 'chest', 'laundry', 'painting', 'lamp'],
     center: ['rug'],
   },
   bathroom: {
@@ -66,14 +69,15 @@ export const ROOMS: Record<RoomType, RoomStyle> = {
     floor: { kind: 'tiles', a: '#cfe3df', b: '#7fa8a3' },
     walls: [{ paper: '#9cc3be', accent: '#b6d6d1', pattern: 'tiles', panel: '#e8e2d2' }],
     must: ['toilet', 'bathtub', 'sinkCab'],
-    maybe: ['laundry', 'trash', 'painting', 'candles'],
+    maybe: ['laundry', 'trash', 'candles', 'plant'],
   },
   library: {
     name: 'Library',
     floor: { kind: 'planks', a: '#6b3d26', b: '#5a311d' },
     walls: [{ paper: '#7a2f2f', accent: '#8f3d3a', pattern: 'diamonds', panel: '#3e2414' }],
     must: ['bookcase', 'bookcase', 'bookcase', 'armchair'],
-    maybe: ['desk', 'clock', 'lamp', 'bookcase', 'plant'],
+    maybe: ['desk', 'clock', 'lamp', 'armchair', 'bookcase'],
+    repeat: ['bookcase'],
     center: ['rug'],
     big: true,
   },
@@ -94,7 +98,7 @@ export const ROOMS: Record<RoomType, RoomStyle> = {
     floor: { kind: 'planks', a: '#7a4c2e', b: '#683f25' },
     walls: [{ paper: '#6e2a3a', accent: '#82394b', pattern: 'stripes', panel: '#3e2414' }],
     must: ['dresser', 'candles'],
-    maybe: ['clock', 'painting', 'plant', 'vase', 'counter'],
+    maybe: ['clock', 'painting', 'vase', 'counter'],
     center: ['table'],
     big: true,
   },
@@ -111,7 +115,7 @@ export const ROOMS: Record<RoomType, RoomStyle> = {
     floor: { kind: 'planks', a: '#6e4428', b: '#5e3820' },
     walls: [{ paper: '#6b5a3e', accent: '#7c6a4c', pattern: 'diamonds', panel: '#3e2414' }],
     must: ['desk', 'bookcase'],
-    maybe: ['chest', 'clock', 'armchair', 'lamp', 'painting', 'plant'],
+    maybe: ['chest', 'clock', 'armchair', 'lamp', 'painting', 'bookcase'],
   },
   storage: {
     name: 'Storage room',
@@ -119,6 +123,7 @@ export const ROOMS: Record<RoomType, RoomStyle> = {
     walls: [{ paper: '#6d6660', accent: '#5e5752', pattern: 'bricks', panel: '#4d4238' }],
     must: ['crate', 'crate', 'barrel', 'boxes'],
     maybe: ['sack', 'chest', 'boxes', 'barrel', 'crate', 'vase'],
+    repeat: ['crate', 'barrel', 'boxes', 'sack'],
   },
 };
 

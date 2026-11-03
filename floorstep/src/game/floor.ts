@@ -302,13 +302,36 @@ export class Floor {
   }
 
   /** The thing the hero would search by pressing the button now. */
+  /** Someone's sitting in it (so it can't be searched). */
+  occupied(r: PieceRT) {
+    return !!this.residents?.list.some((l) => l.box === r.p.box);
+  }
+
+  /** How far (radians) the hero would have to turn to face (x, z). */
+  private facing(x: number, z: number) {
+    const h = this.hero;
+    const a = Math.atan2(x - h.x, z - h.z) - h.yaw;
+    return Math.abs(Math.atan2(Math.sin(a), Math.cos(a)));
+  }
+
+  /**
+   * The resident you'd talk to if you pressed the button now: they win over the nearest piece of
+   * furniture when they're closer, or when you're facing them rather than it.
+   */
+  talkTarget(near = this.target()) {
+    const h = this.hero;
+    const who = this.residents?.near(h.x, h.z);
+    if (!who || !near || near === 'exit') return who ?? null;
+    const c = this.pieceCenter(near);
+    const toWho = Math.hypot(who.x - h.x, who.z - h.z) - 0.35 + this.facing(who.x, who.z) * 0.4;
+    const toPiece = rectDist(near.p.box, h.x, h.z) + this.facing(c.x, c.z) * 0.4;
+    return toWho < toPiece ? who : null;
+  }
+
   private target(): PieceRT | 'exit' | null {
     const h = this.hero;
     const e = this.plan.exit;
-    const facing = (x: number, z: number) => {
-      const a = Math.atan2(x - h.x, z - h.z) - h.yaw;
-      return Math.abs(Math.atan2(Math.sin(a), Math.cos(a)));
-    };
+    const facing = (x: number, z: number) => this.facing(x, z);
     let best: PieceRT | 'exit' | null = null, bestD = Infinity;
     if (!this.exitOpen) {
       const d = Math.hypot(h.x - e.c, h.z - (e.at + 0.4));
@@ -317,6 +340,7 @@ export class Floor {
     const here = roomAt(this.plan, h.x, h.z);
     for (const r of this.pieces) {
       if (r.searched || r.gone || !r.model.group.visible || r.p.room !== here?.id) continue;
+      if (this.occupied(r)) continue;
       const d = rectDist(r.p.box, h.x, h.z) - HERO.radius;
       if (d > HERO.reach) continue;
       // Prefer what you're facing.
@@ -530,10 +554,8 @@ export class Floor {
       return;
     }
     // Someone to talk to? (unless something to search is closer)
-    const who = this.residents?.near(this.hero.x, this.hero.z);
-    const near = this.target();
-    const nearD = near && near !== 'exit' ? rectDist(near.p.box, this.hero.x, this.hero.z) : Infinity;
-    if (who && Math.hypot(who.x - this.hero.x, who.z - this.hero.z) - 0.35 < nearD) {
+    const who = this.talkTarget();
+    if (who) {
       b.prompt(tmp.set(who.x, 2.0, who.z), 'E', `Talk to ${who.def.name}`);
       if (c.interact) this.startTalk(who);
       return;

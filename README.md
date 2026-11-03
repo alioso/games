@@ -100,11 +100,15 @@ Health only comes back from food, potions and petting the cat. 3 tries per floor
 
 **Residents.** Three odd characters live on every floor: old folk smoking pipes, stirring soups, reading enormous books,
 knitting, telling fortunes or snoring over a newspaper, and weird kids playing marbles with eyeballs, collecting bugs,
-holding tea parties for a doll or playing hide and seek alone. Talk to them (Ⓐ): each has their own little test (listen
-to Grandpa's stories, praise Granny's soup, salute the Colonel, play along with the kids...). Get it right and you can
-ask about the key (a vague clue) or the monster (where it hangs out, and how to beat it). Junk you find goes in your
-pocket; each resident wants something (a tooth, a spoon, an eyeball...), and giving it gets you a sharper clue. They
-remember you on later floors.
+holding tea parties for a doll or playing hide and seek alone. Talk to them (Ⓐ): each asks five questions picked at
+random from their own set, and the right answer is whatever pleases *them* (the twins want gross answers, the Colonel
+wants you to shout, Great-Granny wants you to be Herbert). One wrong answer is forgiven (two on Easy); any more and they
+sulk for a while. Pass and you can ask about the monster (where it hangs out, how to beat it) or the key. Key clues are
+only hints: how you'd have to search ("behind something heavy"), which side of the house, what's next door, or how far it
+is from the stairs. Easy floors name the room as a riddle instead. Each resident on a floor tries to tell you something
+new. Junk you find goes in your pocket; each resident wants something (a tooth, a spoon, an eyeball...), and giving it
+skips the quiz and gets you two hints. They remember you on later floors. You can't search a chair someone's sitting
+in, and when someone's standing next to what you want to search, face the thing to search it or face them to talk.
 
 **Around the house:** a cat naps on beds and sofas (pet it, or startle it), spiders drop out of wardrobes, portraits'
 eyes follow you, toilets flush, pianos plonk, clocks cuckoo, and the hero has something to say about most of it.
@@ -127,8 +131,8 @@ Everything can be rebound in **Controls** (title screen and pause menu), which a
 has found and lights up their buttons as you press them. Browsers only notice a controller after a button is pressed
 with the game window in front.
 
-Tweak it in `floorstep/src/data/`: `tuning.ts` (floors per difficulty, house size, hero speed, camera), `furniture.ts`
-(what can be searched, how, for how long), `rooms.ts` (room types, their floors, wallpaper and furniture), `lines.ts`
+Tweak it in `floorstep/src/data/`: `tuning.ts` (floors per difficulty, house size, hero speed, camera, how many quiz questions and slips), `furniture.ts`
+(what can be searched, how, for how long), `rooms.ts` (room types, their floors, wallpaper and furniture; which furniture may appear more than once), `lines.ts`
 (the shared hero lines, junk and snacks), `personas.ts` (each hero's own lines, plus what they say about rooms and furniture), `heroes.ts` (classes, animals, voices, weapons, colours, name ideas), `combat.ts` (every move's timing,
 damage, reach, stamina; how patient monsters are per difficulty), `monsters.ts` (the five monsters: health, attacks per appearance with their heights, lines, key hints),
 `residents.ts` (the residents: rooms, tests, wants, clue wording, fighting tips).

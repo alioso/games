@@ -1,6 +1,8 @@
 // The residents on a floor: where they are, what they mutter, and the conversations you have with them.
 import * as THREE from 'three';
-import { FIGHT_TIPS, RESIDENTS, type Resident, keyClue, where } from '../data/residents';
+import { FIGHT_TIPS, type KeyFacts, RESIDENTS, type Resident, keyClue, where } from '../data/residents';
+import { FURNITURE } from '../data/furniture';
+import { QUIZ } from '../data/tuning';
 import { JUNK } from '../data/lines';
 import { buildResident, type ResidentRig } from '../entities/residentModel';
 import { type Rect, inRect, rectDist, roomAt } from '../world/plan';
@@ -33,6 +35,10 @@ export class Residents {
   private talking: Placed | null = null;
   private asked = { key: false, monster: false, joke: false };
   private generous = false;
+  /** The quiz in progress: questions left, and wrong answers so far. */
+  private quiz = { left: [] as Resident['quiz'], slips: 0 };
+  /** Kinds of key clue already given on this floor (so the next resident says something new). */
+  private given = new Set<string>();
 
   constructor(private f: Floor) {
     f.group.add(this.group);
@@ -72,7 +78,7 @@ export class Residents {
     const r = plan.rooms[roomId].rect;
     // Sitters take an armchair or sofa if there's a free one.
     if (def.sits) {
-      const chair = f.pieces.find((p: PieceRT) => p.p.room === roomId && (p.p.kind === 'armchair' || p.p.kind === 'sofa') && !this.list.some((l) => rectDist(p.p.box, l.x, l.z) < 0.3));
+      const chair = f.pieces.find((p: PieceRT) => p.p.room === roomId && (p.p.kind === 'armchair' || p.p.kind === 'sofa') && p !== f.keyPiece && !this.list.some((l) => rectDist(p.p.box, l.x, l.z) < 0.3));
       if (chair) {
         const fx = Math.sin(chair.p.rot), fz = Math.cos(chair.p.rot);
         const x = chair.p.x + fx * 0.06, z = chair.p.z + fz * 0.06;
@@ -198,31 +204,42 @@ export class Residents {
       return;
     }
     const hello = st.mood < 0 && st.met > 1 ? 'YOU again. Hmph.' : pickOf(l.def.hello);
-    this.test(`${hello} ${l.def.test.ask}`);
+    // Five of their questions, in any order. A slip or two is forgiven, depending on difficulty.
+    this.quiz = { left: [...l.def.quiz].sort(() => Math.random() - 0.5).slice(0, QUIZ.questions), slips: 0 };
+    this.ask(hello);
   }
 
-  private test(text: string) {
+  /** The next quiz question, after whatever they said about your last answer. */
+  private ask(before: string) {
     const l = this.talking!, run = this.f.ctx.run;
     const st = run.residents[l.def.id];
-    const answers = [...l.def.test.answers].sort(() => Math.random() - 0.5);
+    const [q, right, ...wrong] = this.quiz.left.shift()!;
+    const answers: [string, boolean][] = [[right, true], ...wrong.map((w): [string, boolean] => [w, false])];
+    answers.sort(() => Math.random() - 0.5);
     const opts: DialogOption[] = answers.map(([label, good]) => ({
       label,
       action: () => {
-        if (good) {
+        if (!good) this.quiz.slips++;
+        if (this.quiz.slips > QUIZ.slips[run.difficulty]) {
+          st.mood = -1;
+          l.sulkUntil = this.f.time + QUIZ.sulk;
+          SFX.empty();
+          this.line(l.def.bad, [{ label: 'Oops. Bye.', action: () => this.end() }]);
+        } else if (!this.quiz.left.length) {
           st.mood = Math.max(st.mood, 1);
           SFX.heal();
-          this.questions(l.def.test.good);
+          this.questions(l.def.good);
         } else {
-          st.mood = -1;
-          l.sulkUntil = this.f.time + 20;
-          SFX.empty();
-          this.line(l.def.test.bad, [{ label: 'Oops. Bye.', action: () => this.end() }]);
+          if (good) SFX.ui(); else SFX.empty();
+          this.ask(pickOf(good ? l.def.nod : l.def.frown));
         }
       },
     }));
-    this.giveOption(opts);
+    // Only on the first question: hand over a present instead of answering.
+    if (this.quiz.left.length === QUIZ.questions - 1) this.giveOption(opts);
     opts.push({ label: 'Never mind. Bye!', action: () => this.end() });
-    this.line(text, opts);
+    const n = QUIZ.questions - this.quiz.left.length;
+    this.line(`${before} (${n}/${QUIZ.questions}) ${q}`, opts);
   }
 
   /** If you've got what they want in your pocket, you can hand it over. */
@@ -260,9 +277,27 @@ export class Residents {
       this.questions(pickOf(['Why did the skeleton not go to the party? No BODY to go with! HAHAHA.', 'What do you call a sleeping monster? A DINO-SNORE. Hee hee.', 'Knock knock. Who\'s there? Not the key, you\'ve got it!']));
       return;
     }
-    const k = f.keyPiece;
-    const clue = keyClue(f.ctx.run.difficulty, f.plan.rooms[k.p.room].type, k.p.kind, this.generous);
-    this.questions(fill(l.def.clue, { clue }));
+    const clue = keyClue(f.ctx.run.difficulty, this.keyFacts(), this.generous, this.given);
+    this.questions(fill(l.def.clue, { clue }).replace(/(^|[.!?] )([a-z])/g, (_, a: string, c: string) => a + c.toUpperCase()));
+  }
+
+  /** What there is to know about where the key is hidden. */
+  private keyFacts(): KeyFacts {
+    const plan = this.f.plan, k = this.f.keyPiece.p, room = plan.rooms[k.room];
+    const b = plan.bounds, r = room.rect;
+    const dx = ((r.x0 + r.x1) / 2 - (b.x0 + b.x1) / 2) / ((b.x1 - b.x0) / 2);
+    const dz = ((r.z0 + r.z1) / 2 - (b.z0 + b.z1) / 2) / ((b.z1 - b.z0) / 2);
+    const side = Math.max(Math.abs(dx), Math.abs(dz)) < 0.3 ? 'middle' : Math.abs(dx) > Math.abs(dz) ? (dx < 0 ? 'left' : 'right') : dz < 0 ? 'back' : 'front';
+    // Neighbours through doors, and how many rooms you'd walk through from the start.
+    const links = (id: number) => plan.doors.filter((d) => d.kind === 'door' && (d.lo === id || d.hi === id)).map((d) => (d.lo === id ? d.hi : d.lo));
+    const next = [...new Set(links(room.id).map((id) => plan.rooms[id].type).filter((t) => t !== room.type))];
+    const dist = new Map([[plan.startRoom, 0]]);
+    const queue = [plan.startRoom];
+    while (queue.length) {
+      const a = queue.shift()!;
+      for (const n of links(a)) if (!dist.has(n)) { dist.set(n, dist.get(a)! + 1); queue.push(n); }
+    }
+    return { room: room.type, how: FURNITURE[k.kind].search, side, next, steps: dist.get(room.id) ?? 0 };
   }
 
   private askMonster() {

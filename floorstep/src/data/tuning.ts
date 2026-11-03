@@ -44,3 +44,10 @@ export const CAMERA = {
   /** Look a little ahead of where the hero walks. */
   lead: 0.6,
 };
+
+/** Talking to residents: how many questions they ask, wrong answers they let slide, and how long they sulk. */
+export const QUIZ = {
+  questions: 5,
+  slips: { easy: 2, medium: 1, hard: 1 } as Record<Difficulty, number>,
+  sulk: 40,
+};

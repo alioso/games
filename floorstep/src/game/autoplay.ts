@@ -125,10 +125,17 @@ export class Autopilot {
     }
     // Whatever's offered on the way gets searched too, like a player would
     // (unless a resident is closer: then E would start a chat, so keep walking).
-    const who = f.residents?.near(h.x, h.z);
-    const chatFirst = !!who && target && target !== 'exit' && Math.hypot(who.x - h.x, who.z - h.z) - 0.35 < rectDist(target.p.box, h.x, h.z);
+    const chatFirst = !!target && target !== 'exit' && !!f.talkTarget(target);
     if (typeof this.goal === 'number' && target && target !== 'exit' && !chatFirst) {
       c.interact = true;
+      return c;
+    }
+    // Someone's in the way of the thing it came for: turn to face the thing instead.
+    if (chatFirst && typeof this.goal === 'number' && target === f.pieces[this.goal]) {
+      const b = target.p.box;
+      const dx = (b.x0 + b.x1) / 2 - h.x, dz = (b.z0 + b.z1) / 2 - h.z, d = Math.hypot(dx, dz) || 1;
+      c.moveX = dx / d;
+      c.moveZ = dz / d;
       return c;
     }
 
@@ -197,7 +204,7 @@ export class Autopilot {
     const h = f.hero;
     let best: number | null = null, bestD = Infinity;
     f.pieces.forEach((r, i) => {
-      if (r.searched || r.gone || this.skipped.has(i) || FURNITURE[r.p.kind].search === 'none') return;
+      if (r.searched || r.gone || this.skipped.has(i) || FURNITURE[r.p.kind].search === 'none' || f.occupied(r)) return;
       const d = Math.hypot(r.p.x - h.x, r.p.z - h.z);
       if (d < bestD) { bestD = d; best = i; }
     });
