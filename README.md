@@ -5,6 +5,7 @@ Browser games built on a small shared 3D engine (Three.js + post-processing).
 ```
 engine/      reusable engine: loop, renderer, camera, input, sound synth, particles, path-finding, save
 blocstrike/  the first game
+floorstep/   the second game
 tools/       headless-browser scripts: screenshots, staged mechanics, AI match simulation
 ```
 
@@ -12,7 +13,8 @@ tools/       headless-browser scripts: screenshots, staged mechanics, AI match s
 
 ```sh
 npm install
-npm run dev        # → http://localhost:5173  (also reachable from other devices on the network)
+npm run dev        # Blocstrike → http://localhost:5173  (also reachable from other devices on the network)
+npm run dev:floor  # Floor Step → http://localhost:5174
 ```
 
 Then press **F** for fullscreen.
@@ -73,9 +75,52 @@ Save the file and the browser reloads.
 Plug the computer in with HDMI (a direct USB-C→HDMI adapter is more reliable than a hub), then press F.
 If the edges are cut off, use **Settings → TV edge margin**. If it stutters, use **Settings → Graphics quality → Low**.
 
+## Floor Step
+
+A haunted house drawn like a comic book. Climb it floor by floor to free Youser the baby bunny, who is locked in at the
+very top: **Easy** 5 floors, **Medium** 10, **Hard** 15. Each floor is a new set of rooms (kitchen, bedrooms, library,
+bathroom, nursery…), generated fresh every game. Somewhere on each floor, one piece of furniture hides the **key** to the
+locked door and the stairs up. Open wardrobes and chests, look under beds and tables, smash crates and vases, push
+bookcases aside, dig through laundry, lift rugs and toilet lids, peek behind paintings. Some hold snacks and potions
+(hearts), some junk, some a bat or a mouse. Rooms stay dark until you open their door. The game saves at every floor.
+
+**Fighting.** Each floor has a monster, in this order: **Gribbles** (scrawny goblin-rat: claws, bites, lunges; then
+pounces; then calls his rats), **Claught** (huge crab-bear: slow crushing slams and pincers; then throws crates; then
+burrows under the floor and bursts up), **Zegron** (chameleon: long tongue and tail whip; then turns invisible, only a
+shimmer gives him away; then spits acid that leaves burning puddles), **Sieger** (armoured beetle-knight: hits from the
+front clang off, so get behind him or catch him off balance; then charges, and is dizzy if he hits a wall; then flies
+up and dives), **Slashner** (scarecrow with blade hands: three-hit slashes and spins; then teleports behind you; then
+throws boomerang blades). On Easy each shows up once and dies; on Medium twice, on Hard three times (fleeing upstairs at
+each mark, coming back bandaged with new tricks). Every attack has a wind-up you can read, then a moment where the
+monster is open. Light hits don't interrupt them and mashing gets you countered, so block, parry (block just before the
+hit), dodge, then punish; heavy blows break a wind-up and knock teeth out. Beaten, a monster blurts out a hint about the
+key (plain on Easy, vaguer on Medium, a riddle on Hard). Health only comes back from food, potions and petting the cat.
+Fall, and you get 3 tries per floor (new layout, full health) before it's back to floor 1.
+
+**Around the house:** a cat naps on beds and sofas (pet it, or startle it), spiders drop out of wardrobes, portraits'
+eyes follow you, toilets flush, pianos plonk, clocks cuckoo, and the hero has something to say about most of it.
+
+**The top floor:** Youser waits in a cage at the top of the last stairs. Open the door and... well, play it. Then the
+end screen shows your run (time, things searched, monsters beaten, cats petted) and unlocks a costume colour.
+
+Heroes: Guzzard (sword combo, 3 recharging magic blasts), MightyMac (long halberd thrusts, best block, shield bash),
+Gronkers (huge club hits, poor block, ground slam that smashes furniture), Shifumi (crossbow bolts, then a fast knife;
+smoke bomb; finds bolts while searching).
+
+Gamepad: stick move · Ⓐ search · Ⓧ attack (press again to combo) · Ⓨ heavy · RB/LB block (hold) · Ⓑ dodge · RT/LT special
+Keys: WASD · E search · J attack · K heavy · L block · Space dodge · Q special · Esc pause
+Everything can be rebound in **Controls** (title screen and pause menu), which also shows which controllers the browser
+has found and lights up their buttons as you press them. Browsers only notice a controller after a button is pressed
+with the game window in front.
+
+Tweak it in `floorstep/src/data/`: `tuning.ts` (floors per difficulty, house size, hero speed, camera), `furniture.ts`
+(what can be searched, how, for how long), `rooms.ts` (room types, their floors, wallpaper and furniture), `lines.ts`
+(everything the hero says, junk and snacks), `heroes.ts` (classes, animals, voices, weapons, colours, name ideas), `combat.ts` (every move's timing,
+damage, reach, stamina; how patient monsters are per difficulty), `monsters.ts` (the five monsters: health, attacks per appearance, lines, key hints).
+
 ## Tools
 
-With `npm run dev` running:
+With `npm run dev` (Blocstrike) or `npm run dev:floor` (Floor Step) running:
 
 ```sh
 npm run shot                  # plays a round in headless Chrome, saves tools/shots/*.png
@@ -87,6 +132,18 @@ node tools/features.mjs       # 30 staged checks: lava jumps, bridges, gates, qu
 node tools/stuck.mjs 15 110   # hunts for rounds that never end, every arena and difficulty, and dumps where everyone is
 node tools/simulate.mjs arenas 10            # computer-only rounds in every arena (random weapons)
 node tools/simulate.mjs weapons 6 jungle     # every weapon against every weapon in one arena
+
+node tools/floorstep.mjs all          # Floor Step: generates 300 floors, then plays one (search, key, exit), screenshots
+node tools/floorstep.mjs showcase     # searches one of each kind of furniture and screenshots it
+node tools/floorstep-auto.mjs 15 hard # a robot player finishes whole floors (proves every floor can be finished)
+node tools/floorstep-menus.mjs        # new game → pause → save & quit → continue
+node tools/floorstep-fight.mjs 1 wizard,knight,barbarian,thief block   # a careful robot fights every monster at each appearance
+node tools/floorstep-fight.mjs 1 knight mash                           # ...and a button-masher (should get hurt)
+node tools/floorstep.mjs fight        # screenshots of a fight
+node tools/floorstep-controls.mjs     # opens Controls and rebinds a key
+node tools/floorstep-monsters.mjs knight Claught,Sieger   # films monsters at full strength fighting the robot
+node tools/floorstep-anim.mjs knight  # frame strips of walking, turning, combos, heavy blows and a fight (judge animation)
+node tools/floorstep-probe.mjs "<js>" [ms]   # run code in the page (window.floorstep), optional screenshot
 ```
 
 In the browser console, `blocstrike.match` is the live round, `blocstrike.settings.coins = 500` gives you coins

@@ -162,8 +162,28 @@ export interface MenuActions {
   back: boolean;
 }
 
+/**
+ * D-pad of a controller the browser doesn't map to the standard layout: many report it as a
+ * "hat" axis (usually axis 9) stepping through 8 directions, and > 1 when centred.
+ */
+export function padHat(pad: Gamepad): [number, number] {
+  if (pad.mapping === 'standard' || pad.axes.length < 10) return [0, 0];
+  const v = pad.axes[9];
+  if (v === undefined || Math.abs(v) > 1.05) return [0, 0];
+  const i = Math.round((v + 1) / (2 / 7)) % 8;
+  const DIRS: [number, number][] = [[0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1]];
+  return DIRS[i];
+}
+
+/** Which buttons drive menus (standard layout by default; games can remap). */
+export interface MenuPadMap {
+  confirm: number[];
+  back: number[];
+}
+
 /** Menu navigation from every keyboard key set and every connected pad, with stick auto-repeat. */
 export class MenuInput {
+  pad: MenuPadMap = { confirm: [0], back: [1] };
   private prev = new Map<number, boolean[]>();
   private repeatAt = 0;
   private lastDir = '';
@@ -182,14 +202,17 @@ export class MenuInput {
       if (!pad) continue;
       const prev = this.prev.get(pad.index) ?? [];
       const edge = (i: number) => !!pad.buttons[i]?.pressed && !prev[i];
-      if (edge(0)) a.confirm = true;
-      if (edge(1)) a.back = true;
-      if (edge(12)) a.up = true;
-      if (edge(13)) a.down = true;
-      if (edge(14)) a.left = true;
-      if (edge(15)) a.right = true;
+      if (this.pad.confirm.some(edge)) a.confirm = true;
+      if (this.pad.back.some(edge)) a.back = true;
+      if (pad.mapping === 'standard') {
+        if (edge(12)) a.up = true;
+        if (edge(13)) a.down = true;
+        if (edge(14)) a.left = true;
+        if (edge(15)) a.right = true;
+      }
       this.prev.set(pad.index, pad.buttons.map((b) => b.pressed));
-      const x = pad.axes[0] ?? 0, y = pad.axes[1] ?? 0;
+      const [hx, hy] = padHat(pad);
+      const x = hx || (pad.axes[0] ?? 0), y = hy || (pad.axes[1] ?? 0);
       if (Math.abs(y) > 0.6) dir = y < 0 ? 'up' : 'down';
       else if (Math.abs(x) > 0.6) dir = x < 0 ? 'left' : 'right';
     }

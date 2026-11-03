@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import {
   BloomEffect,
+  type Effect,
+  type Pass,
   EffectComposer,
   EffectPass,
   RenderPass,
@@ -13,6 +15,8 @@ export interface RendererOptions {
   /** 0.5–1: fraction of the native resolution to render at. Lower it on big TVs if frames drop. */
   renderScale?: number;
   bloom?: number;
+  /** Game-specific post effects (run before bloom), e.g. an ink-outline pass. */
+  effects?: (scene: THREE.Scene, camera: THREE.PerspectiveCamera) => { passes?: Pass[]; effects?: Effect[] };
 }
 
 /** WebGL renderer + post-processing chain (bloom, vignette, tone mapping, MSAA). */
@@ -42,6 +46,8 @@ export class Renderer {
       multisampling: Math.min(4, this.gl.capabilities.maxSamples),
     });
     this.composer.addPass(new RenderPass(this.scene, this.camera));
+    const extra = opts.effects?.(this.scene, this.camera);
+    for (const p of extra?.passes ?? []) this.composer.addPass(p);
     this.bloom = new BloomEffect({
       luminanceThreshold: 0.85,
       luminanceSmoothing: 0.2,
@@ -51,6 +57,7 @@ export class Renderer {
     this.composer.addPass(
       new EffectPass(
         this.camera,
+        ...(extra?.effects ?? []),
         this.bloom,
         new VignetteEffect({ darkness: 0.3, offset: 0.4 }),
         new ToneMappingEffect({ mode: ToneMappingMode.ACES_FILMIC }),
