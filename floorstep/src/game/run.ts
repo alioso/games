@@ -18,6 +18,10 @@ export interface RunState {
   continues: number;
   /** How hurt each monster is, so it comes back with its bandage and half a health bar. */
   monsters: Partial<Record<MonsterName, { hp: number; injuries: Injury[]; dead?: boolean }>>;
+  /** Junk you're carrying (ids from JUNK): some residents want it. */
+  pocket: string[];
+  /** How each resident feels about you (they remember you on later floors). */
+  residents: Record<string, { mood: number; met: number }>;
   /** For the end screen. */
   stats: { searched: number; beaten: number; fled: number; falls: number; seconds: number; petted: number };
 }
@@ -27,6 +31,7 @@ export const CONTINUES = 3;
 export function newRun(difficulty: Difficulty, look: HeroLook, seedBase: number): RunState {
   return {
     difficulty, floor: 1, look, seedBase, hp: COMBAT[look.cls].maxHp, arrows: CROSSBOW.start, continues: CONTINUES, monsters: {},
+    pocket: [], residents: {},
     stats: { searched: 0, beaten: 0, fled: 0, falls: 0, seconds: 0, petted: 0 },
   };
 }

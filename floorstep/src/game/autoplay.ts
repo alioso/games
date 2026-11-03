@@ -90,6 +90,20 @@ export class Autopilot {
   poll(dt: number): HeroControls {
     const f = this.floor;
     const c: HeroControls = { ...NO_CONTROLS };
+    // Fight scenes have their own robot.
+    if (f.duel) {
+      if (this.style !== 'mash') return f.duel.botControls();
+      const m = f.duel.m, h = f.duel.h;
+      c.moveX = Math.abs(m.x - h.x) > 1.2 ? Math.sign(m.x - h.x) : 0;
+      c.light = Math.random() < 0.5;
+      return c;
+    }
+    // The robot doesn't chat: if it bumped into a conversation, it says goodbye.
+    if (f.phase === 'talk') {
+      f.ctx.dialog.close();
+      f.residents.endTalkNow();
+      return c;
+    }
     if (f.phase !== 'play' || f.searching) return c;
     const h = f.hero;
     if (this.fight(c)) return c;
@@ -109,8 +123,11 @@ export class Autopilot {
       }
       return c;
     }
-    // Whatever's offered on the way gets searched too, like a player would.
-    if (typeof this.goal === 'number' && target && target !== 'exit') {
+    // Whatever's offered on the way gets searched too, like a player would
+    // (unless a resident is closer: then E would start a chat, so keep walking).
+    const who = f.residents?.near(h.x, h.z);
+    const chatFirst = !!who && target && target !== 'exit' && Math.hypot(who.x - h.x, who.z - h.z) - 0.35 < rectDist(target.p.box, h.x, h.z);
+    if (typeof this.goal === 'number' && target && target !== 'exit' && !chatFirst) {
       c.interact = true;
       return c;
     }

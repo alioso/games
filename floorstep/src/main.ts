@@ -24,6 +24,7 @@ import { Bubbles } from './ui/bubbles';
 import { Hud } from './ui/hud';
 import { Menu } from './ui/menu';
 import { Creator } from './ui/creator';
+import { Dialog } from './ui/dialog';
 import { generateFloor, lastFail } from './world/plan';
 import { InkEffect } from './world/inkEffect';
 
@@ -70,6 +71,13 @@ function updatePadStatus() {
 }
 
 const creator = new Creator(ui, (look) => portrait(look, 360)).listen();
+const dialog = new Dialog(ui);
+dialog.input.pad = menuPad;
+/** Portraits for conversations (cached by key). */
+function facePortrait(key: string, make: () => THREE.Object3D) {
+  thumbs ??= new Thumbnailer(360);
+  return thumbs.render(key, make, { yaw: -0.35, pitch: 0.1, zoom: 0.9 });
+}
 creator.input.pad = menu.input.pad;
 const PROGRESS_KEY = 'floorstep.progress';
 
@@ -115,7 +123,7 @@ function backdrop() {
   floor = new Floor({
     scene: renderer.scene, camera: renderer.camera, bubbles, hud,
     look: defaultLook('wizard'), floor: 1, total: 5, seed: Math.floor(Math.random() * 1e6), run: newRun('easy', defaultLook('wizard'), 0),
-    onExit: () => {}, onDefeat: () => {}, calm: true,
+    onExit: () => {}, onDefeat: () => {}, calm: true, dialog, portrait: facePortrait,
   });
   floor.debugRevealAll();
   floor.debugTeleport(floor.plan.start.x, floor.plan.start.z);
@@ -132,6 +140,7 @@ function startFloor() {
     look: r.look, floor: r.floor, total, seed: r.seedBase + r.floor * 1013, run: r,
     onExit: () => nextFloor(),
     onDefeat: () => defeated(),
+    dialog, portrait: facePortrait,
   });
   saveRun();
   hud.show(true);
@@ -298,6 +307,7 @@ const loop = new GameLoop(
     if (menu.open) menu.update(performance.now() / 1000);
     if (creator.open) creator.update(performance.now() / 1000);
     if (controls.open) controls.update(performance.now() / 1000);
+    if (dialog.open) dialog.update(dt, performance.now() / 1000);
     updatePadStatus();
     if (!floor) return;
     for (let i = 0; i < simSpeed; i++) {

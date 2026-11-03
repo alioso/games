@@ -84,18 +84,27 @@ locked door and the stairs up. Open wardrobes and chests, look under beds and ta
 bookcases aside, dig through laundry, lift rugs and toilet lids, peek behind paintings. Some hold snacks and potions
 (hearts), some junk, some a bat or a mouse. Rooms stay dark until you open their door. The game saves at every floor.
 
-**Fighting.** Each floor has a monster, in this order: **Gribbles** (scrawny goblin-rat: claws, bites, lunges; then
-pounces; then calls his rats), **Claught** (huge crab-bear: slow crushing slams and pincers; then throws crates; then
-burrows under the floor and bursts up), **Zegron** (chameleon: long tongue and tail whip; then turns invisible, only a
-shimmer gives him away; then spits acid that leaves burning puddles), **Sieger** (armoured beetle-knight: hits from the
-front clang off, so get behind him or catch him off balance; then charges, and is dizzy if he hits a wall; then flies
-up and dives), **Slashner** (scarecrow with blade hands: three-hit slashes and spins; then teleports behind you; then
-throws boomerang blades). On Easy each shows up once and dies; on Medium twice, on Hard three times (fleeing upstairs at
-each mark, coming back bandaged with new tricks). Every attack has a wind-up you can read, then a moment where the
-monster is open. Light hits don't interrupt them and mashing gets you countered, so block, parry (block just before the
-hit), dodge, then punish; heavy blows break a wind-up and knock teeth out. Beaten, a monster blurts out a hint about the
-key (plain on Easy, vaguer on Medium, a riddle on Hard). Health only comes back from food, potions and petting the cat.
-Fall, and you get 3 tries per floor (new layout, full health) before it's back to floor 1.
+**Fight scenes.** Each floor has a monster prowling the house: **Gribbles** (goblin-rat), **Claught** (crab-bear),
+**Zegron** (chameleon), **Sieger** (armoured beetle-knight), **Slashner** (blade-handed scarecrow). If it hasn't seen you,
+you can still sneak off to another room. Once it sees you, the camera swings round to the side of the room and it's a
+one-on-one fight on a line, arcade-style, until it runs away, dies, or you fall. Move with the stick, jump (stick up or Ⓐ),
+crouch (stick down), hold block (standing blocks high and overhead blows, crouching blocks low sweeps; block right before a
+hit to parry), dodge (Ⓑ: hop back, or roll right past it when pushing forward), Ⓧ light combo (press again in rhythm),
+Ⓨ heavy. Combos: down+Ⓧ sweep (gets under a guard), down+Ⓨ rising strike (knocks it off its feet), forward+Ⓨ lunge,
+Ⓧ/Ⓨ in the air for a chop. Specials (RT): magic blast, shield bash, ground slam, smoke-step behind it. Monsters show
+every attack coming: duck high ones (Gribbles' swipe, Zegron's tongue, Slashner's blades), jump low ones (tails, spins,
+rats), block overhead ones, and get out of the red rings (pounces, dives, crates, Claught bursting up from the floor).
+Sieger can't be hurt from the front: jump or roll behind him, or make him charge into a wall. Each monster comes back
+stronger on later appearances (Medium/Hard), wounded from last time, and blurts out a hint about the key when beaten.
+Health only comes back from food, potions and petting the cat. 3 tries per floor, then it's back to floor 1.
+
+**Residents.** Three odd characters live on every floor: old folk smoking pipes, stirring soups, reading enormous books,
+knitting, telling fortunes or snoring over a newspaper, and weird kids playing marbles with eyeballs, collecting bugs,
+holding tea parties for a doll or playing hide and seek alone. Talk to them (Ⓐ): each has their own little test (listen
+to Grandpa's stories, praise Granny's soup, salute the Colonel, play along with the kids...). Get it right and you can
+ask about the key (a vague clue) or the monster (where it hangs out, and how to beat it). Junk you find goes in your
+pocket; each resident wants something (a tooth, a spoon, an eyeball...), and giving it gets you a sharper clue. They
+remember you on later floors.
 
 **Around the house:** a cat naps on beds and sofas (pet it, or startle it), spiders drop out of wardrobes, portraits'
 eyes follow you, toilets flush, pianos plonk, clocks cuckoo, and the hero has something to say about most of it.
@@ -107,6 +116,11 @@ Heroes: Guzzard (sword combo, 3 recharging magic blasts), MightyMac (long halber
 Gronkers (huge club hits, poor block, ground slam that smashes furniture), Shifumi (crossbow bolts, then a fast knife;
 smoke bomb; finds bolts while searching).
 
+Each hero has their own voice for everything they find, see and fight. Guzzard, the duck, is a pompous, grumpy, slightly
+cowardly scholar. MightyMac, the dog, is an earnest knight who isn't very bright and goes on about honour (and sniffs things).
+Gronkers, the fat dragon, is loud and always hungry, and talks about himself in the third person. Shifumi, the weird bird,
+is a twitchy sneak who "borrows" shiny things and is terrified of the cat.
+
 Gamepad: stick move · Ⓐ search · Ⓧ attack (press again to combo) · Ⓨ heavy · RB/LB block (hold) · Ⓑ dodge · RT/LT special
 Keys: WASD · E search · J attack · K heavy · L block · Space dodge · Q special · Esc pause
 Everything can be rebound in **Controls** (title screen and pause menu), which also shows which controllers the browser
@@ -115,8 +129,9 @@ with the game window in front.
 
 Tweak it in `floorstep/src/data/`: `tuning.ts` (floors per difficulty, house size, hero speed, camera), `furniture.ts`
 (what can be searched, how, for how long), `rooms.ts` (room types, their floors, wallpaper and furniture), `lines.ts`
-(everything the hero says, junk and snacks), `heroes.ts` (classes, animals, voices, weapons, colours, name ideas), `combat.ts` (every move's timing,
-damage, reach, stamina; how patient monsters are per difficulty), `monsters.ts` (the five monsters: health, attacks per appearance, lines, key hints).
+(the shared hero lines, junk and snacks), `personas.ts` (each hero's own lines, plus what they say about rooms and furniture), `heroes.ts` (classes, animals, voices, weapons, colours, name ideas), `combat.ts` (every move's timing,
+damage, reach, stamina; how patient monsters are per difficulty), `monsters.ts` (the five monsters: health, attacks per appearance with their heights, lines, key hints),
+`residents.ts` (the residents: rooms, tests, wants, clue wording, fighting tips).
 
 ## Tools
 
@@ -141,7 +156,8 @@ node tools/floorstep-fight.mjs 1 wizard,knight,barbarian,thief block   # a caref
 node tools/floorstep-fight.mjs 1 knight mash                           # ...and a button-masher (should get hurt)
 node tools/floorstep.mjs fight        # screenshots of a fight
 node tools/floorstep-controls.mjs     # opens Controls and rebinds a key
-node tools/floorstep-monsters.mjs knight Claught,Sieger   # films monsters at full strength fighting the robot
+node tools/floorstep-duel.mjs knight Claught,Sieger hard  # films fight scenes against monsters (frame sheets)
+node tools/floorstep-talk.mjs        # talks to every resident on a floor, prints what they say
 node tools/floorstep-anim.mjs knight  # frame strips of walking, turning, combos, heavy blows and a fight (judge animation)
 node tools/floorstep-probe.mjs "<js>" [ms]   # run code in the page (window.floorstep), optional screenshot
 ```

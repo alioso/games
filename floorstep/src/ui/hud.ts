@@ -1,5 +1,9 @@
 // On-screen captions: floor number, hearts, the key slot, the current goal, banners and fades.
 
+import { JUNK } from '../data/lines';
+
+const POCKET_ICONS: Record<string, string> = Object.fromEntries(JUNK.map((j) => [j.id, j.icon]));
+
 export class Hud {
   readonly el: HTMLDivElement;
   private floorEl: HTMLDivElement;
@@ -22,7 +26,7 @@ export class Hud {
     this.el = document.createElement('div');
     this.el.className = 'hud hidden';
     this.el.innerHTML = `
-      <div class="hud-left caption"><div class="hud-name"></div><div class="hearts"></div><div class="stamina"><i></i></div><div class="special"><span></span><i></i></div></div>
+      <div class="hud-left caption"><div class="hud-name"></div><div class="hearts"></div><div class="stamina"><i></i></div><div class="special"><span></span><i></i></div><div class="pocket"></div></div>
       <div class="hud-mid"><div class="caption floor"></div><div class="goal"></div><div class="mbar hidden"><b></b><div class="mbar-track"><i></i><s></s></div></div></div>
       <div class="hud-right caption"><div class="keyslot"></div></div>`;
     parent.appendChild(this.el);
@@ -86,6 +90,12 @@ export class Hud {
     this.mbarFill.style.width = `${Math.max(0, frac) * 100}%`;
     this.mbarMark.style.left = `${mark * 100}%`;
     this.mbarMark.style.display = mark > 0 ? 'block' : 'none';
+  }
+
+  /** The junk in your pocket, as little icons. */
+  setPocket(ids: string[]) {
+    const el = this.el.querySelector('.pocket')!;
+    el.innerHTML = ids.map((id) => `<span title="${id}">${POCKET_ICONS[id] ?? '?'}</span>`).join('');
   }
 
   setKey(has: boolean) {

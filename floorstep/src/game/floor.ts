@@ -7,6 +7,7 @@ import { COMBAT } from '../data/combat';
 import { FURNITURE } from '../data/furniture';
 import { ANIMALS, type HeroLook } from '../data/heroes';
 import { KIND_LINES, LINES, ROOM_LINES, fill, pick } from '../data/lines';
+import { type LineKey, PERSONAS } from '../data/personas';
 import { CAMERA, HERO, HOUSE } from '../data/tuning';
 import { buildHero, type HeroRig, type Pose } from '../entities/heroModel';
 import { Critters } from '../entities/critters';
@@ -19,6 +20,10 @@ import { CUT_Y, CUT_Z, applySection, ink, toon, unclipped } from '../world/toon'
 import type { Bubbles } from '../ui/bubbles';
 import type { Hud } from '../ui/hud';
 import { Combat } from './combat';
+import { Duel } from './duel';
+import { type Placed, Residents } from './residents';
+import type { Dialog } from '../ui/dialog';
+import type { Monster } from './monster';
 import type { HeroControls } from './controls';
 import type { RunState } from './run';
 import { SFX } from './sounds';
@@ -39,6 +44,9 @@ export interface FloorCtx {
   onDefeat: () => void;
   /** No monster (the floor behind the title screen). */
   calm?: boolean;
+  /** Conversations with residents, and their portraits. */
+  dialog: Dialog;
+  portrait: (key: string, make: () => THREE.Object3D) => string;
 }
 
 export interface PieceRT {
@@ -88,7 +96,13 @@ export class Floor {
   readonly house: House;
   readonly pieces: PieceRT[] = [];
   readonly hero = { x: 0, z: 0, y: 0, vx: 0, vz: 0, yaw: Math.PI };
-  phase: 'arrive' | 'play' | 'exit' | 'done' | 'dead' | 'reunion' = 'arrive';
+  phase: 'arrive' | 'play' | 'exit' | 'done' | 'dead' | 'reunion' | 'duel' | 'talk' = 'arrive';
+  residents!: Residents;
+  /** The fight scene in progress, if any. */
+  duel: Duel | null = null;
+  private disposed = false;
+  private camBlend = 1;
+  private camBlendFrom = new THREE.Vector3();
   hasKey = false;
   exitOpen = false;
   time = 0;
@@ -156,6 +170,11 @@ export class Floor {
     this.group.add(this.critters.group, this.particles.mesh);
     this.combat = new Combat(this);
     this.placeCat();
+    if (!ctx.calm) {
+      this.residents = new Residents(this);
+      this.rebuildSolids();
+    }
+    ctx.hud.setPocket(ctx.run.pocket);
     if (ctx.floor === ctx.total && !ctx.calm) this.placeYouser();
 
     // Lights: a moon through the roof for shadows, a pool of room lights, the hero's own glow.
@@ -218,6 +237,7 @@ export class Floor {
       const e = this.plan.exit, hw = HOUSE.doorWidth / 2;
       this.solids.push({ x0: e.c - hw, x1: e.c + hw, z0: e.at - 0.12, z1: e.at + 0.12 });
     }
+    if (this.residents) this.solids.push(...this.residents.solids());
   }
 
   solidAt(x: number, z: number, r: number) {
@@ -248,7 +268,15 @@ export class Floor {
     return [x, z];
   }
 
+  /** Something in this hero's own voice (shared lines if they have none of their own). */
+  line(key: LineKey, vars: Record<string, string | number> = {}, fallback?: readonly string[]) {
+    const own = PERSONAS[this.ctx.look.cls].lines[key];
+    const shared = (LINES as Record<string, readonly string[]>)[key] ?? fallback ?? ['...'];
+    return fill(pick(own ?? shared), vars);
+  }
+
   say(text: string, shout = false) {
+    if (this.disposed) return; // a late quip after leaving the floor
     const pitch = ANIMALS[this.ctx.look.animal].voice * (this.ctx.look.sex === 'f' ? 1.25 : 1);
     this.ctx.bubbles.say(this.rig.headTop, text, { shout, onChar: (ch) => SFX.voice(pitch, ch) });
   }
@@ -301,9 +329,76 @@ export class Floor {
 
   // ---------- update ----------
 
+  get camera() {
+    return this.ctx.camera;
+  }
+
+  /** A monster has seen the hero: everything stops for a fight scene. */
+  startDuel(m: Monster) {
+    if (this.duel || this.phase !== 'play') return;
+    if (this.search) this.cancelSearch();
+    this.poseHold = 0;
+    this.combat.act = null;
+    this.duel = new Duel(this, m);
+    this.phase = 'duel';
+  }
+
+  private startTalk(who: Placed) {
+    this.phase = 'talk';
+    this.ctx.bubbles.prompt(null, '', '');
+    this.hero.yaw = Math.atan2(who.x - this.hero.x, who.z - this.hero.z);
+    this.residents.talk(who);
+  }
+
+  endTalk() {
+    if (this.phase === 'talk') this.phase = 'play';
+    this.idle = 0;
+  }
+
+  /** Back to the top-down view, gliding from where the camera is now. */
+  resumeCamera(from: THREE.Vector3) {
+    this.camBlendFrom.copy(from);
+    this.camBlend = 0;
+    this.camLook.set(this.hero.x, 0, this.hero.z);
+  }
+
+  private updateDuel(dt: number, c: HeroControls) {
+    const duel = this.duel!;
+    const going = duel.update(dt, c);
+    const rig = this.rig;
+    this.combat.effects(dt, duel.trailRecording, rig);
+    this.particles.update(dt);
+    this.critters.update(dt);
+    this.updatePieces(dt);
+    if (this.phase === 'dead') {
+      this.deadT += dt;
+      if (this.deadT > 2.6 && this.deadT - dt <= 2.6) this.ctx.onDefeat();
+      return;
+    }
+    if (!going) {
+      duel.dispose();
+      this.duel = null;
+      this.phase = 'play';
+      this.idle = 0;
+    }
+  }
+
   update(dt: number, c: HeroControls) {
     this.time += dt;
     this.poseT += dt;
+    if (this.duel) {
+      this.updateDuel(dt, c);
+      return;
+    }
+    if (this.phase === 'talk') {
+      // Chatting: the house holds its breath.
+      this.residents.update(dt);
+      this.particles.update(dt);
+      this.updatePieces(dt);
+      this.setPose('idle');
+      this.hero.vx = this.hero.vz = 0;
+      return;
+    }
     const h = this.hero;
     let mx = c.moveX, mz = c.moveZ;
     let speedMul = 1;
@@ -316,7 +411,7 @@ export class Floor {
       speedMul = 0.7;
       if (h.z <= this.plan.arrival.at - 0.9) {
         this.phase = 'play';
-        this.say(fill(pick(LINES.arrive), { floor: this.ctx.floor }));
+        this.say(this.line('arrive', { floor: this.ctx.floor }));
       }
     } else if (this.phase === 'exit') {
       this.autoT += dt;
@@ -381,7 +476,7 @@ export class Floor {
 
     if (this.phase === 'play') {
       this.idle = Math.hypot(c.moveX, c.moveZ) > 0.1 || this.search || fight || this.combat.boss?.engaged ? 0 : this.idle + dt;
-      if (this.idle > 14) { this.idle = -10; this.say(pick(LINES.idle)); }
+      if (this.idle > 14) { this.idle = -10; this.say(this.line('idle')); }
       this.updateRooms();
       this.updateInteract(c);
       if (this.exitOpen && h.z < this.plan.exit.at - 0.5) {
@@ -395,6 +490,7 @@ export class Floor {
     this.updatePieces(dt);
     this.critters.update(dt);
     this.updateCat(dt);
+    this.residents?.update(dt);
     if (this.phase === 'play') this.ctx.run.stats.seconds += dt;
     if (this.phase === 'reunion') this.updateReunion(dt);
     else if (this.youser) this.youser.animate(dt, this.time, 0, 'sad');
@@ -409,7 +505,7 @@ export class Floor {
       this.revealRoom(room.id);
       if (!this.entered.has(room.id)) {
         this.entered.add(room.id);
-        const lines = ROOM_LINES[room.type];
+        const lines = PERSONAS[this.look.cls].rooms[room.type] ?? ROOM_LINES[room.type];
         if (lines && Math.random() < 0.4 && !this.ctx.bubbles.speaking(this.rig.headTop)) this.say(pick(lines));
       }
     }
@@ -431,6 +527,15 @@ export class Floor {
     const b = this.ctx.bubbles;
     if (this.search || this.poseHold > 0 || this.combat.act || this.combat.blocking) {
       b.prompt(null, '', '');
+      return;
+    }
+    // Someone to talk to? (unless something to search is closer)
+    const who = this.residents?.near(this.hero.x, this.hero.z);
+    const near = this.target();
+    const nearD = near && near !== 'exit' ? rectDist(near.p.box, this.hero.x, this.hero.z) : Infinity;
+    if (who && Math.hypot(who.x - this.hero.x, who.z - this.hero.z) - 0.35 < nearD) {
+      b.prompt(tmp.set(who.x, 2.0, who.z), 'E', `Talk to ${who.def.name}`);
+      if (c.interact) this.startTalk(who);
       return;
     }
     const t = this.target();
@@ -464,7 +569,7 @@ export class Floor {
     if (!this.hasKey) {
       SFX.locked();
       this.house.exitDoor.angle = 0.06;
-      this.say(pick(LINES.locked));
+      this.say(this.line('locked'));
       return;
     }
     SFX.unlock();
@@ -479,7 +584,7 @@ export class Floor {
     this.rebuildSolids();
     this.ctx.hud.setKey(false);
     this.ctx.hud.objective('Up the stairs!');
-    this.say(pick(LINES.unlock));
+    this.say(this.line('unlock'));
   }
 
   private startSearch(r: PieceRT) {
@@ -584,7 +689,7 @@ export class Floor {
         this.ctx.hud.setHp(this.ctx.run.hp, this.maxHp);
         SFX.heal();
         this.ctx.bubbles.pow(c.clone().setY(1.6), `+${f.amount} ♥`, '#ff6b6b', 0.8);
-        this.say(f.line);
+        this.say(Math.random() < 0.65 ? cap(this.line('heal', { item: f.name })) : f.line);
         break;
       }
       case 'junk':
@@ -594,11 +699,17 @@ export class Floor {
           this.ctx.run.arrows += n;
           SFX.junk();
           this.ctx.bubbles.pow(c.clone().setY(1.6), `+${n} ➶`, '#ffd23f', 0.8);
-          this.say('Bolts! Handy.');
+          this.say(this.line('bolts', {}, ['Bolts! Handy.']));
           break;
         }
         SFX.junk();
-        this.say(f.line);
+        this.say(Math.random() < 0.65 ? cap(this.line('junk', { item: f.name })) : f.line);
+        // Into the pocket (some residents would love it).
+        if (this.ctx.run.pocket.length < 8) {
+          this.ctx.run.pocket.push(f.id);
+          this.ctx.hud.setPocket(this.ctx.run.pocket);
+          this.ctx.bubbles.pow(c.clone().setY(1.7), `+${f.icon}`, '#ffffff', 0.8);
+        }
         break;
       case 'critter': {
         const from = this.hero;
@@ -606,12 +717,12 @@ export class Floor {
         if (f.critter === 'bat') {
           SFX.bat();
           this.ctx.bubbles.pow(c.clone().setY(2), 'FLAP FLAP', '#c9b8ff', 0.8);
-          this.say(pick(LINES.bat), true);
+          this.say(this.line('bat'), true);
           SFX.scream();
         } else {
           SFX.squeak();
           this.ctx.bubbles.pow(c.clone().setY(0.8), 'SQUEAK!', '#ffffff', 0.7);
-          this.say(pick(LINES.mouse));
+          this.say(this.line('mouse'));
         }
         this.setPose('scared', 0.9);
         break;
@@ -623,18 +734,18 @@ export class Floor {
           const h = this.hero;
           this.critters.spawn('spider', h.x + Math.sin(h.yaw) * 0.45, h.z + Math.cos(h.yaw) * 0.45, h.x, h.z);
           this.setPose('scared', 0.9);
-          this.say(pick(['EEK! A SPIDER!', 'Get it off! Get it off!', 'Spiders. Why is it always spiders?']), true);
+          this.say(this.line('spider', {}, ['EEK! A SPIDER!', 'Get it off! Get it off!']), true);
           SFX.scream();
           break;
         }
-        const kindLines = KIND_LINES[r.p.kind];
+        const kindLines = PERSONAS[this.look.cls].kinds[r.p.kind] ?? KIND_LINES[r.p.kind];
         if (kindLines && Math.random() < 0.55) {
           this.say(pick(kindLines));
           break;
         }
-        if (def.search === 'smash' && Math.random() < 0.3) this.say(pick(LINES.smashed));
-        else if (!this.hasKey && this.searches > 6 && Math.random() < 0.45) this.say(pick(LINES.emptyMany));
-        else this.say(pick(LINES.empty));
+        if (def.search === 'smash' && Math.random() < 0.3) this.say(this.line('smashed'));
+        else if (!this.hasKey && this.searches > 6 && Math.random() < 0.45) this.say(this.line('emptyMany'));
+        else this.say(this.line('empty'));
         break;
       }
     }
@@ -670,7 +781,7 @@ export class Floor {
     this.ctx.bubbles.ring(null);
     this.ctx.bubbles.prompt(null, '', '');
     this.combat.act = null;
-    this.say(pick(['Ugh...', 'Youser... sorry...', 'Not... like... this...']));
+    this.say(this.line('die', {}, ['Ugh...', 'Youser... sorry...']));
     this.shake = 0.5;
   }
 
@@ -682,7 +793,7 @@ export class Floor {
     this.group.add(this.keyMesh);
     this.keyAnim = 0;
     this.setPose('cheer', 1.5);
-    this.say(pick(LINES.key), true);
+    this.say(this.line('key'), true);
     this.ctx.bubbles.pow(at.clone().setY(2.2), 'KEY!', '#f2c14e', 1.3);
     this.ctx.hud.setKey(true);
     this.ctx.hud.objective('Find the locked door!');
@@ -791,7 +902,7 @@ export class Floor {
     SFX.hiss();
     this.ctx.bubbles.pow(tmp.set(cat.x, cat.y + 0.7, cat.z), 'HSSSS!', '#ffb050', 0.9);
     this.ctx.bubbles.say(cat.headTop, 'MRRAOW!', { shout: true });
-    if (!this.ctx.bubbles.speaking(this.rig.headTop)) this.say(pick(['GAH! A cat!', 'Sorry, kitty!', 'Bad kitty! ...Bad me.']), true);
+    if (!this.ctx.bubbles.speaking(this.rig.headTop)) this.say(this.line('catStartle', {}, ['GAH! A cat!', 'Sorry, kitty!']), true);
     this.setPose('scared', 0.7);
   }
 
@@ -803,7 +914,7 @@ export class Floor {
       this.ctx.run.hp = Math.min(this.maxHp, this.ctx.run.hp + 1);
       this.ctx.hud.setHp(this.ctx.run.hp, this.maxHp);
       this.ctx.bubbles.pow(tmp.set(cat.x, cat.y + 0.9, cat.z), '+1 ♥', '#ff6b6b', 0.7);
-      this.say(pick(['Who\'s a good kitty?', 'Aww. That\'s better.', 'Nice kitty. Don\'t eat me.']));
+      this.say(this.line('catPet', {}, ['Who\'s a good kitty?', 'Aww. That\'s better.']));
       this.ctx.run.stats.petted++;
     }
     cat.pet();
@@ -855,7 +966,7 @@ export class Floor {
     this.phase = 'reunion';
     const y = this.youser!;
     this.reunion = { t: 0, step: 'cage', hopT: 0, x: y.root.position.x, z: y.root.position.z, fromX: 0, fromZ: 0 };
-    this.say('YOUSER!', true);
+    this.say(this.line('reunionCall', {}, ['YOUSER!']), true);
   }
 
   private updateReunion(dt: number) {
@@ -908,7 +1019,7 @@ export class Floor {
         this.setPose('hug');
         SFX.joy();
         this.ctx.hud.banner('YOUSER IS FREE!', 'Together again!', 4.5, true);
-        this.say(pick(['Youser! I found you!', 'There you are, little one!', 'Never again, Youser. Never again.']), true);
+        this.say(this.line('reunion', {}, ['Youser! I found you!', 'There you are, little one!']), true);
         setTimeout(() => this.youser && this.ctx.bubbles.say(this.youser.headTop, '*happy squeak!*', { shout: true }), 1300);
       }
     } else {
@@ -938,6 +1049,13 @@ export class Floor {
   }
 
   render(dt: number) {
+    if (this.duel) {
+      this.duel.render(dt, this.ctx.camera);
+      this.applyShake(dt);
+      this.house.update(dt, this.time);
+      this.updateLights();
+      return;
+    }
     const h = this.hero;
     this.rig.root.position.set(h.x, h.y, h.z);
     // Turns are smoothed for the eye; how fast we turn and how far we walked drive the animation.
@@ -963,17 +1081,27 @@ export class Floor {
     this.camPos.set(this.camLook.x, this.camLook.y + CAMERA.height * this.camZoom, this.camLook.z + CAMERA.back * this.camZoom);
     const cam = this.ctx.camera;
     cam.position.copy(this.camPos);
-    if (this.shake > 0) {
-      this.shake = Math.max(0, this.shake - dt * 1.5);
-      const s = this.shake * this.shake * 0.6;
-      cam.position.x += (Math.random() - 0.5) * s;
-      cam.position.y += (Math.random() - 0.5) * s;
+    // Gliding back from a fight scene.
+    if (this.camBlend < 1) {
+      this.camBlend = Math.min(1, this.camBlend + dt / 0.8);
+      const e = this.camBlend * this.camBlend * (3 - 2 * this.camBlend);
+      cam.position.lerpVectors(this.camBlendFrom, this.camPos, e);
     }
+    this.applyShake(dt);
     cam.lookAt(this.camLook);
 
     CUT_Z.constant = damp(CUT_Z.constant, this.cutTarget(), 8, dt);
     this.house.update(dt, this.time);
     this.updateLights();
+  }
+
+  private applyShake(dt: number) {
+    if (this.shake <= 0) return;
+    const cam = this.ctx.camera;
+    this.shake = Math.max(0, this.shake - dt * 1.5);
+    const s = this.shake * this.shake * 0.6;
+    cam.position.x += (Math.random() - 0.5) * s;
+    cam.position.y += (Math.random() - 0.5) * s;
   }
 
   private updateLights() {
@@ -1033,6 +1161,7 @@ export class Floor {
   }
 
   dispose() {
+    this.disposed = true;
     this.combat.dispose();
     this.ctx.bubbles.clear();
     this.critters.clear();
@@ -1042,4 +1171,9 @@ export class Floor {
     });
     this.moon.shadow.map?.dispose();
   }
+}
+
+/** Capitalise sentence starts ("Hm. an old sock" -> "Hm. An old sock"). */
+function cap(s: string) {
+  return s.replace(/(^|[.!?] )([a-z])/g, (_, a: string, c: string) => a + c.toUpperCase());
 }

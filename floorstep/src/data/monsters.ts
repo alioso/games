@@ -35,7 +35,7 @@ export interface MonsterAttack {
   /** Spins round while striking (hits all around). */
   spin?: boolean;
   /** Leaps: how high. */
-  height?: number;
+  jump?: number;
   /** Throws: what, how many, how spread out. */
   projectile?: { kind: 'crate' | 'acid' | 'blade'; count: number; speed: number; spread: number };
   /** Vanish: seconds invisible. */
@@ -44,6 +44,12 @@ export interface MonsterAttack {
   follow?: string;
   /** How often it's picked when several fit (default 1). */
   weight?: number;
+  /**
+   * In fight scenes: high (duck under it), mid, low (jump over it, or block crouching), overhead
+   * (block standing). Unblockable ones you have to get out of the way of.
+   */
+  height?: 'high' | 'mid' | 'low' | 'overhead';
+  unblockable?: boolean;
 }
 
 export interface MonsterDef {
@@ -71,10 +77,10 @@ export const MONSTERS: Record<MonsterName, MonsterDef> = {
     walk: 1.6,
     run: 3.1,
     attacks: [
-      melee('swipe', 0.55, [0.55], 0.75, 1, 1.15, 70, [0, 1.3]),
+      melee('swipe', 0.55, [0.55], 0.75, 1, 1.15, 70, [0, 1.3], 1, { height: 'high' }),
       melee('bite', 0.4, [0.4, 0.7], 0.85, 1, 0.95, 50, [0, 1.1]),
       { id: 'lunge', kind: 'dash', tell: 0.65, hits: [0.65], recover: 1.1, damage: 2, reach: 0.9, arc: 60, range: [2.4, 4.2], from: 1, speed: 6.5, duration: 0.35 },
-      { id: 'pounce', kind: 'leap', tell: 0.9, hits: [1.45], recover: 1.0, damage: 2, reach: 1.1, arc: 360, range: [3, 6.5], from: 2, height: 1.6, weight: 1.5 },
+      { id: 'pounce', kind: 'leap', tell: 0.9, hits: [1.45], recover: 1.0, damage: 2, reach: 1.1, arc: 360, range: [3, 6.5], from: 2, height: 'overhead', weight: 1.5 },
     ],
     minions: { count: 3, every: 14 },
     lines: {
@@ -93,10 +99,10 @@ export const MONSTERS: Record<MonsterName, MonsterDef> = {
     walk: 1.0,
     run: 2.2,
     attacks: [
-      melee('slam', 0.85, [0.85], 1.3, 2.5, 1.6, 65, [0, 1.8], 1, { push: 1.2 }),
+      melee('slam', 0.85, [0.85], 1.3, 2, 1.6, 65, [0, 1.8], 1, { push: 1.2, height: 'overhead' }),
       melee('pinch', 0.5, [0.5, 0.85], 1.0, 1.5, 1.45, 55, [0, 1.6]),
-      { id: 'throw', kind: 'throw', tell: 0.8, hits: [0.8], recover: 0.9, damage: 2, reach: 1.0, arc: 360, range: [3, 9], from: 2, projectile: { kind: 'crate', count: 1, speed: 7, spread: 0 }, weight: 1.4 },
-      { id: 'burrow', kind: 'burrow', tell: 0.7, hits: [0], recover: 1.4, damage: 2.5, reach: 1.3, arc: 360, range: [2.5, 10], from: 3, speed: 3.2, duration: 2.6, weight: 1.3 },
+      { id: 'throw', kind: 'throw', tell: 0.8, hits: [0.8], recover: 0.9, damage: 1.5, reach: 1.0, arc: 360, range: [3, 9], from: 2, projectile: { kind: 'crate', count: 1, speed: 7, spread: 0 }, weight: 1.4, height: 'overhead' },
+      { id: 'burrow', kind: 'burrow', tell: 0.7, hits: [0], recover: 1.4, damage: 2, reach: 1.3, arc: 360, range: [2.5, 10], from: 3, speed: 3.2, duration: 2.6, weight: 1.3, unblockable: true },
     ],
     lines: {
       spot: ['CLAUGHT HUNGRY.', 'Little snack walks in...', 'Snip snip.'],
@@ -114,11 +120,11 @@ export const MONSTERS: Record<MonsterName, MonsterDef> = {
     walk: 1.8,
     run: 3.4,
     attacks: [
-      melee('tongue', 0.45, [0.45], 0.8, 1, 2.6, 18, [1.0, 2.7]),
-      melee('tail', 0.5, [0.5], 0.85, 1.5, 1.4, 360, [0, 1.4], 1, { spin: true }),
+      melee('tongue', 0.45, [0.45], 0.8, 1, 2.6, 18, [1.0, 2.7], 1, { height: 'high' }),
+      melee('tail', 0.5, [0.5], 0.85, 1.5, 1.4, 360, [0, 1.4], 1, { spin: true, height: 'low' }),
       melee('swipe', 0.4, [0.4], 0.7, 1, 1.1, 70, [0, 1.2]),
       { id: 'vanish', kind: 'vanish', tell: 0.5, hits: [0], recover: 0, damage: 0, reach: 0, arc: 0, range: [1.5, 8], from: 2, hide: 3.2, follow: 'swipe', weight: 1.4 },
-      { id: 'spit', kind: 'throw', tell: 0.6, hits: [0.6, 0.85, 1.1], recover: 0.9, damage: 1, reach: 0.7, arc: 360, range: [3, 8], from: 3, projectile: { kind: 'acid', count: 1, speed: 8, spread: 0.6 }, weight: 1.3 },
+      { id: 'spit', kind: 'throw', tell: 0.6, hits: [0.6, 0.85, 1.1], recover: 0.9, damage: 1, reach: 0.7, arc: 360, range: [3, 8], from: 3, projectile: { kind: 'acid', count: 1, speed: 8, spread: 0.6 }, weight: 1.3, height: 'overhead' },
     ],
     lines: {
       spot: ['I see you... do you see ME?', 'Sssslurp.', 'Fresh flies!'],
@@ -140,7 +146,7 @@ export const MONSTERS: Record<MonsterName, MonsterDef> = {
       melee('jab', 0.5, [0.5], 0.8, 1.5, 1.9, 25, [0, 2.0]),
       melee('shove', 0.4, [0.4], 0.9, 1, 1.15, 70, [0, 1.2], 1, { push: 1.6 }),
       { id: 'charge', kind: 'dash', tell: 0.85, hits: [0.85], recover: 1.0, damage: 2.5, reach: 0.9, arc: 70, range: [3, 9], from: 2, speed: 8, duration: 1.1, wallStun: 2.2, push: 1.5, weight: 1.5 },
-      { id: 'dive', kind: 'leap', tell: 1.0, hits: [1.8], recover: 1.2, damage: 2.5, reach: 1.3, arc: 360, range: [3, 8], from: 3, height: 3, weight: 1.3 },
+      { id: 'dive', kind: 'leap', tell: 1.0, hits: [1.8], recover: 1.2, damage: 2.5, reach: 1.3, arc: 360, range: [3, 8], from: 3, height: 'overhead', jump: 3, weight: 1.3 },
     ],
     lines: {
       spot: ['HALT! In the name of... me!', 'A challenger approaches!', 'En garde!'],
@@ -158,10 +164,10 @@ export const MONSTERS: Record<MonsterName, MonsterDef> = {
     walk: 1.7,
     run: 3.3,
     attacks: [
-      melee('slash', 0.45, [0.45, 0.7, 0.95], 0.95, 1, 1.4, 80, [0, 1.5]),
-      melee('spin', 0.65, [0.65, 0.9, 1.15], 1.1, 1, 1.5, 360, [0, 1.5], 1, { spin: true }),
+      melee('slash', 0.45, [0.45, 0.7, 0.95], 0.95, 1, 1.4, 80, [0, 1.5], 1, { height: 'high' }),
+      melee('spin', 0.65, [0.65, 0.9, 1.15], 1.1, 1, 1.5, 360, [0, 1.5], 1, { spin: true, height: 'low' }),
       { id: 'teleport', kind: 'teleport', tell: 0.5, hits: [0], recover: 0, damage: 0, reach: 0, arc: 0, range: [2, 12], from: 2, follow: 'slash', weight: 1.4 },
-      { id: 'blades', kind: 'throw', tell: 0.65, hits: [0.65], recover: 1.0, damage: 1.5, reach: 0.5, arc: 360, range: [3, 10], from: 3, projectile: { kind: 'blade', count: 3, speed: 7, spread: 0.5 }, weight: 1.3 },
+      { id: 'blades', kind: 'throw', tell: 0.65, hits: [0.65], recover: 1.0, damage: 1.5, reach: 0.5, arc: 360, range: [3, 10], from: 3, projectile: { kind: 'blade', count: 3, speed: 7, spread: 0.5 }, weight: 1.3, height: 'high' },
     ],
     lines: {
       spot: ['Snip... snip... SNIP.', 'Stay for dinner. Forever.', 'Hello, little crow.'],

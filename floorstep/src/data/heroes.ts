@@ -1,7 +1,7 @@
 // The four heroes. Each class comes in two animals; looks are chosen before the game.
 
 export type HeroClass = 'wizard' | 'knight' | 'barbarian' | 'thief';
-export type Animal = 'duck' | 'cat' | 'dog' | 'dragon' | 'bear' | 'pig' | 'lizard' | 'rabbit';
+export type Animal = 'duck' | 'cat' | 'dog' | 'dragon' | 'bear' | 'pig' | 'lizard' | 'rabbit' | 'bird';
 export type Sex = 'm' | 'f';
 
 export interface ClassDef {
@@ -15,9 +15,9 @@ export interface ClassDef {
 
 export const CLASSES: Record<HeroClass, ClassDef> = {
   wizard: { name: 'Guzzard', title: 'Wizard', animals: ['duck', 'cat'], costume: 0x3a4a9a, accent: 0xe8c040, blurb: 'Sword and magic blasts. Strong from afar, fragile up close.' },
-  knight: { name: 'MightyMac', title: 'Knight', animals: ['dog', 'dragon'], costume: 0x9a2a2a, accent: 0xc8c8d0, blurb: 'Halberd and shield. Long reach, best block, a bit slow.' },
-  barbarian: { name: 'Gronkers', title: 'Barbarian', animals: ['bear', 'pig'], costume: 0x6a4a2a, accent: 0xb0a080, blurb: 'Spiked club. Huge hits, smashes everything, no shield.' },
-  thief: { name: 'Shifumi', title: 'Thief', animals: ['lizard', 'rabbit'], costume: 0x2a4a3a, accent: 0x8a6a4a, blurb: 'Crossbow, then knife. Fast, sneaky, searches quicker.' },
+  knight: { name: 'MightyMac', title: 'Knight', animals: ['dog', 'bear'], costume: 0x9a2a2a, accent: 0xc8c8d0, blurb: 'Halberd and shield. Long reach, best block, a bit slow.' },
+  barbarian: { name: 'Gronkers', title: 'Barbarian', animals: ['dragon', 'pig'], costume: 0x6a4a2a, accent: 0xb0a080, blurb: 'Spiked club. Huge hits, smashes everything, no shield.' },
+  thief: { name: 'Shifumi', title: 'Thief', animals: ['bird', 'lizard'], costume: 0x2a4a3a, accent: 0x8a6a4a, blurb: 'Crossbow, then knife. Fast, sneaky, searches quicker.' },
 };
 
 export interface AnimalDef {
@@ -32,11 +32,12 @@ export const ANIMALS: Record<Animal, AnimalDef> = {
   duck: { skin: 0xf4f0e0, muzzle: 0xf0a030, voice: 520 },
   cat: { skin: 0xd8903a, muzzle: 0xf4e4c8, voice: 470 },
   dog: { skin: 0xb88850, muzzle: 0xe8d0a8, voice: 330 },
-  dragon: { skin: 0x6aa04a, muzzle: 0xd8d090, voice: 260 },
+  dragon: { skin: 0xe0782a, muzzle: 0xf4d89a, voice: 200 },
   bear: { skin: 0x7a5232, muzzle: 0xc8a070, voice: 200 },
   pig: { skin: 0xf0a8a8, muzzle: 0xf8c0c0, voice: 300 },
   lizard: { skin: 0x5aa08a, muzzle: 0xd0e0a0, voice: 400 },
   rabbit: { skin: 0xe8e0d8, muzzle: 0xf8f0ea, voice: 560 },
+  bird: { skin: 0x8a98b0, muzzle: 0xe8b030, voice: 520 },
 };
 
 export interface HeroLook {

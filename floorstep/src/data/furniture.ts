@@ -86,5 +86,5 @@ export type Find =
   | { kind: 'key' }
   | { kind: 'empty' }
   | { kind: 'heal'; amount: number; name: string; line: string }
-  | { kind: 'junk'; name: string; line: string }
+  | { kind: 'junk'; id: string; icon: string; name: string; line: string }
   | { kind: 'critter'; critter: 'bat' | 'mouse' };

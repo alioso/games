@@ -82,7 +82,7 @@ export class Combat implements MonsterWorld {
   /** Wizard's magic charges (and the time until the next one refills). */
   charges = 0;
   private chargeT = 0;
-  private staminaWait = 0;
+  staminaWait = 0;
   private blockStart = -10;
   private invulnerable = 0;
   private projectiles: Projectile[] = [];
@@ -92,8 +92,8 @@ export class Combat implements MonsterWorld {
   private navCache: { key: string; nav: NavGrid } | null = null;
   private barT = 0;
   private hitPause = 0;
-  private trail = new Trail();
-  private impacts = new Impacts();
+  readonly trail = new Trail();
+  readonly impacts = new Impacts();
   private handPos = new THREE.Vector3();
   private tipPos = new THREE.Vector3();
 
@@ -285,6 +285,10 @@ export class Combat implements MonsterWorld {
     return this.monsters.find((m) => !m.minion) ?? null;
   }
 
+  startDuel(m: Monster) {
+    this.f.startDuel(m);
+  }
+
   /** Something loud (a smash, a fight) at (x, z): monsters nearby come to look. */
   noise(x: number, z: number) {
     for (const m of this.monsters) m.hear(x, z);
@@ -323,7 +327,7 @@ export class Combat implements MonsterWorld {
         this.stamina = 0;
         this.blocking = false;
         this.act = { kind: 'hurt', t: -0.4 };
-        f.say('Whoa!');
+        f.say(f.line('whoa', {}, ['Whoa!']));
       }
       if (through > 0.05) this.damageHero(through, dx, dz, false);
       return 'blocked';
@@ -456,7 +460,7 @@ export class Combat implements MonsterWorld {
     this.puddles.push({ x, z, r: 0.65, t: 5, mesh });
   }
 
-  private damageHero(damage: number, dx: number, dz: number, flinch: boolean) {
+  damageHero(damage: number, dx: number, dz: number, flinch: boolean) {
     const f = this.f, h = this.hero, run = f.ctx.run;
     run.hp = Math.max(0, run.hp - damage);
     f.ctx.hud.setHp(run.hp, this.cls.maxHp);
@@ -495,7 +499,7 @@ export class Combat implements MonsterWorld {
 
   private spend(cost: number) {
     if (this.stamina < cost * 0.5) {
-      if (Math.random() < 0.3) this.f.say('*pant pant*');
+      if (Math.random() < 0.3) this.f.say(this.f.line('pant', {}, ['*pant pant*']));
       return false;
     }
     this.stamina -= cost;
@@ -531,14 +535,8 @@ export class Combat implements MonsterWorld {
     if (a?.kind === 'melee' && !a.heavy && c.light && a.index < cls.combo.length - 1 && a.t > a.move.hit * 0.6) a.queued = true;
     if (a) { this.blocking = false; return; }
 
-    const wasBlocking = this.blocking;
-    this.blocking = c.block && this.stamina > 0;
-    if (this.blocking && !wasBlocking) this.blockStart = f.time;
-    if (this.blocking) {
-      this.aim(6, Math.PI);
-      if (c.dodge) this.blocking = false;
-      else return;
-    }
+    // Blocking only matters in fight scenes (see duel.ts); out here you just explore.
+    this.blocking = false;
 
     if (c.dodge && this.spend(STAMINA.dodge)) {
       const h = this.hero;
@@ -565,30 +563,22 @@ export class Combat implements MonsterWorld {
     if (c.special) this.special();
   }
 
+  /** Outside a fight only the thief's smoke bomb is any use: monsters lose you, and you slip away. */
   private special() {
     const f = this.f;
-    const sp = this.cls.special;
-    if (sp.kind === 'blast') {
-      if (this.charges <= 0) { f.say('Out of magic!'); return; }
-      this.aim(BLAST.range, 0.6);
-      this.charges--;
-      this.startTimed('cast', 0.45, 0.15);
+    if (this.cls.special.kind !== 'smoke') {
+      if (Math.random() < 0.5) f.say(f.line('notNow', {}, ['Save it for a fight.', 'Not now.']));
       return;
     }
     if (this.specialCool > 0) return;
-    this.specialCool = sp.cooldown;
-    if (sp.kind === 'bash') { this.aim(2.5); this.startTimed('bash', 0.5, 0.18); SFX.whoosh(false); }
-    else if (sp.kind === 'slam') { this.startTimed('slam', 0.85, 0.45); f.say('RAAAH!', true); }
-    else {
-      // Smoke bomb: vanish backwards; monsters lose you for a moment.
-      const h = this.hero;
-      this.smoke(h.x, h.z);
-      this.pow(h.x, 1.4, h.z, 'POOF!', '#e0e0e0', 1);
-      SFX.smoke();
-      for (const m of this.monsters) if (m.alive && Math.hypot(m.x - h.x, m.z - h.z) < 9) m.blind = SMOKE.blind;
-      const dx = -Math.sin(h.yaw), dz = -Math.cos(h.yaw);
-      [h.x, h.z] = f.collide(h.x + dx * SMOKE.dash, h.z + dz * SMOKE.dash, HERO.radius);
-    }
+    this.specialCool = this.cls.special.cooldown;
+    const h = this.hero;
+    this.smoke(h.x, h.z);
+    this.pow(h.x, 1.4, h.z, 'POOF!', '#e0e0e0', 1);
+    SFX.smoke();
+    for (const m of this.monsters) if (m.alive && Math.hypot(m.x - h.x, m.z - h.z) < 9) m.blind = SMOKE.blind;
+    const dx = -Math.sin(h.yaw), dz = -Math.cos(h.yaw);
+    [h.x, h.z] = f.collide(h.x + dx * SMOKE.dash, h.z + dz * SMOKE.dash, HERO.radius);
   }
 
   /** Pose for the hero right now, or null to let walking/idle decide. */
@@ -804,6 +794,22 @@ export class Combat implements MonsterWorld {
         this.projectiles.splice(i, 1);
       }
     }
+  }
+
+  /** During a fight scene: just the blood, impact stars, the weapon swoosh and the readouts. */
+  effects(dt: number, trail: boolean, rig: { hand: THREE.Object3D; tip: THREE.Object3D }) {
+    this.trail.recording = trail;
+    rig.hand.getWorldPosition(this.handPos);
+    rig.tip.getWorldPosition(this.tipPos);
+    this.trail.update(dt, this.handPos, this.tipPos);
+    this.impacts.update(dt);
+    this.gore.update(dt);
+    const max = this.cls.special.charges ?? 0;
+    if (this.charges < max) {
+      this.chargeT += dt;
+      if (this.chargeT >= BLAST.recharge) { this.chargeT = 0; this.charges++; }
+    }
+    this.hud(dt);
   }
 
   /** Keep the health bar, stamina and special readouts current. */

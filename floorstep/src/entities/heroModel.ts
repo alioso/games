@@ -9,7 +9,11 @@ import { Springs } from './springs';
 export type Pose =
   | 'idle' | 'walk' | 'search' | 'under' | 'cheer' | 'scared' | 'climb'
   | 'swing1' | 'swing2' | 'heavy' | 'thrust' | 'shoot' | 'cast' | 'bash' | 'slam'
-  | 'block' | 'dodge' | 'hurt' | 'dead' | 'kneel' | 'hug';
+  | 'block' | 'dodge' | 'hurt' | 'dead' | 'kneel' | 'hug'
+  // Fight-scene moves:
+  | 'jump' | 'crouch' | 'crouchblock' | 'sweep' | 'rising' | 'airslash' | 'down'
+  // What the house's residents get up to:
+  | 'sit' | 'stir' | 'read' | 'knit' | 'snore' | 'play' | 'peek' | 'puff';
 
 /** How the hero is moving this frame, so the walk cycle matches the feet to the floor. */
 export interface Motion {
@@ -29,6 +33,9 @@ export interface HeroRig {
   hand: THREE.Object3D;
   /** In front of the chest: where Youser sits when hugged. */
   chest: THREE.Object3D;
+  /** The head and the other hand, for hats, glasses and props (residents). */
+  head: THREE.Object3D;
+  handL: THREE.Object3D;
   tip: THREE.Object3D;
   /**
    * @param t seconds in this pose
@@ -114,8 +121,16 @@ function eyes(y: number, z: number, skin: number, female: boolean) {
   return { g, lids };
 }
 
-function buildHead(look: HeroLook) {
-  const a = ANIMALS[look.animal];
+/** Options for the house's residents, built with the same body: no weapon, no class gear. */
+export interface BuildOptions {
+  bare?: boolean;
+  /** Fur colour override (grey for the old folk). */
+  skin?: number;
+  /** A long robe or dress instead of a tunic. */
+  robe?: boolean;
+}
+
+function buildHead(look: HeroLook, a: { skin: number; muzzle: number }, bare: boolean) {
   const f = look.sex === 'f';
   const head = new THREE.Group();
   const skull = oval(0.14, 0.145, 0.14, a.skin);
@@ -165,19 +180,40 @@ function buildHead(look: HeroLook) {
       break;
     }
     case 'dragon': {
-      // Long snout like Marvin's, nostrils at the tip, chipped little horns.
-      const snout = lathe([[0.001, 0], [0.05, 0.015], [0.07, 0.16], [0.085, 0.26]], a.skin);
-      snout.rotation.x = -Math.PI / 2 - 0.12;
-      snout.position.set(0, -0.03, 0.38);
+      // A big round snout with flared nostrils, a double chin, chipped little horns.
+      const snout = lathe([[0.001, 0], [0.06, 0.015], [0.09, 0.15], [0.11, 0.26]], a.skin);
+      snout.rotation.x = -Math.PI / 2 - 0.15;
+      snout.position.set(0, -0.04, 0.39);
       head.add(snout);
-      head.add(oval(0.06, 0.02, 0.16, a.muzzle, 0, -0.085, 0.21));
+      head.add(oval(0.08, 0.03, 0.17, a.muzzle, 0, -0.1, 0.22));
+      head.add(oval(0.12, 0.07, 0.1, a.skin, 0, -0.12, 0.04));
       for (const s of [-1, 1]) {
-        head.add(ball(0.014, INKC, s * 0.025, 0.0, 0.37));
+        head.add(oval(0.02, 0.016, 0.01, INKC, s * 0.032, 0.0, 0.385));
         const horn = part(new THREE.ConeGeometry(0.022, s > 0 ? 0.13 : 0.09, 6), 0xd8d0b0, s * 0.07, 0.15, -0.06);
         horn.rotation.x = -0.7;
         head.add(horn);
       }
       eyeY = 0.11;
+      break;
+    }
+    case 'bird': {
+      // A long thin beak, a crooked crest and a scruffy ruff: a weird bird.
+      skull.scale.set(0.12, 0.14, 0.13);
+      const beak = lathe([[0.035, 0], [0.025, 0.15], [0.001, 0.36]], a.muzzle, 10);
+      beak.rotation.x = Math.PI / 2 + 0.25;
+      beak.position.set(0, -0.01, 0.09);
+      beak.scale.x = 0.8;
+      head.add(beak);
+      const lower = lathe([[0.022, 0], [0.015, 0.12], [0.001, 0.26]], 0xc88a20, 8);
+      lower.rotation.x = Math.PI / 2 + 0.38;
+      lower.position.set(0, -0.035, 0.08);
+      head.add(lower);
+      for (const [x, rz, len] of [[-0.02, 0.5, 0.16], [0.01, -0.1, 0.2], [0.04, -0.7, 0.13]] as const) head.add(tuft(darker(a.skin, 0.6), x, 0.13, -0.03, -0.6, rz, len));
+      for (let i = 0; i < 6; i++) {
+        const ang = (i / 6) * Math.PI * 2;
+        head.add(tuft(darker(a.skin, 0.8), Math.cos(ang) * 0.09, -0.13, Math.sin(ang) * 0.09, Math.sin(ang) * 1.6, -Math.cos(ang) * 1.6, 0.07));
+      }
+      eyeY = 0.07; eyeZ = 0.08;
       break;
     }
     case 'bear': {
@@ -238,7 +274,7 @@ function buildHead(look: HeroLook) {
     head.add(tail);
   }
 
-  switch (look.cls) {
+  switch (bare ? null : look.cls) {
     case 'wizard': {
       // A tall, dented hat that has seen better days, bent at the top, with a patch.
       const hat = new THREE.Group();
@@ -386,13 +422,15 @@ function buildWeapon(look: HeroLook) {
   return { g, tip };
 }
 
-export function buildHero(look: HeroLook): HeroRig {
-  const a = ANIMALS[look.animal];
+export function buildHero(look: HeroLook, opts: BuildOptions = {}): HeroRig {
+  const a = { ...ANIMALS[look.animal], ...(opts.skin !== undefined ? { skin: opts.skin } : {}) };
+  const bare = !!opts.bare;
   const root = new THREE.Group();
   const body = new THREE.Group();
   root.add(body);
-  const burly = look.cls === 'barbarian';
-  const legCol = burly ? a.skin : look.cls === 'knight' ? 0x6a6a74 : 0x3a3030;
+  const burly = !bare && look.cls === 'barbarian';
+  // Birds go barefoot on skinny yellow legs; dragons show their scaly ones.
+  const legCol = look.animal === 'bird' ? 0xd8a030 : burly || look.animal === 'dragon' ? a.skin : !bare && look.cls === 'knight' ? 0x6a6a74 : 0x3a3030;
   const sp = new Springs();
 
   // Legs and long pointy shoes.
@@ -407,9 +445,18 @@ export function buildHero(look: HeroLook): HeroRig {
     const shin = limb(0.22, 0.03, legCol);
     shin.position.y = -0.25;
     thigh.add(shin);
-    const shoe = oval(0.05, 0.035, 0.12, BOOT, 0, -0.26, 0.06);
-    shoe.rotation.x = -0.1;
-    shin.add(shoe);
+    if (look.animal === 'bird') {
+      // Long knobbly toes instead of shoes.
+      for (const k of [-1, 0, 1]) {
+        const toe = part(new THREE.CapsuleGeometry(0.012, 0.12, 3, 6), 0xd8a030, k * 0.03, -0.27, 0.06);
+        toe.rotation.set(Math.PI / 2, 0, k * 0.4);
+        shin.add(toe);
+      }
+    } else {
+      const shoe = oval(0.05, 0.035, 0.12, BOOT, 0, -0.26, 0.06);
+      shoe.rotation.x = -0.1;
+      shin.add(shoe);
+    }
     hips.add(thigh);
     legs.push(thigh);
     shins.push(shin);
@@ -419,8 +466,10 @@ export function buildHero(look: HeroLook): HeroRig {
   const torso = new THREE.Group();
   torso.position.y = 0.46;
   body.add(torso);
-  const robe = look.cls === 'wizard';
-  const w = burly ? 1.25 : 1;
+  const robe = opts.robe ?? (!bare && look.cls === 'wizard');
+  // Dragons are fat; barbarians are broad; fat barbarian dragons are both.
+  const dragon = look.animal === 'dragon';
+  const w = (burly ? 1.25 : 1) * (dragon ? 1.2 : 1);
   const hem = robe ? -0.42 : -0.08;
   const flare = robe ? 0.22 : 0.17;
   torso.add(lathe([[0.001, hem], [flare * w, hem], [0.15 * w, 0.02], [0.13 * w, 0.18], [0.1 * w, 0.32], [0.06, 0.41], [0.001, 0.42]], look.costume));
@@ -443,9 +492,31 @@ export function buildHero(look: HeroLook): HeroRig {
   torso.add(part(new THREE.TorusGeometry(0.135 * w, 0.014, 6, 18), 0x6a5034, 0, 0.13, 0).rotateX(Math.PI / 2 + 0.08));
   torso.add(part(new THREE.CylinderGeometry(0.006, 0.006, 0.1, 4), 0x6a5034, 0.05, 0.08, 0.135 * w).rotateZ(0.2));
   torso.add(oval(0.04, 0.045, 0.025, 0x5a3a22, -0.11 * w, 0.06, 0.08));
-  if (look.cls === 'knight') torso.add(lathe([[0.135, 0.1], [0.132, 0.2], [0.105, 0.32], [0.065, 0.39]], METAL));
-  if (burly) torso.add(oval(0.2, 0.06, 0.13, 0x8a6a4a, 0, 0.36, -0.01));
-  if (look.cls === 'thief') {
+  if (!bare && look.cls === 'knight') torso.add(lathe([[0.135, 0.1], [0.132, 0.2], [0.105, 0.32], [0.065, 0.39]], METAL));
+  if (burly) torso.add(oval(0.2 * (dragon ? 1.2 : 1), 0.06, 0.13 * (dragon ? 1.2 : 1), 0x8a6a4a, 0, 0.36, -0.01));
+  if (dragon) {
+    // A big pale belly bulging out of the tunic, and stubby little wings.
+    torso.add(oval(0.15 * w, 0.17, 0.08, a.muzzle, 0, 0.17, 0.1 * w));
+    for (const s of [-1, 1]) {
+      const wing = new THREE.Shape();
+      wing.moveTo(0, 0);
+      wing.quadraticCurveTo(s * 0.22, 0.12, s * 0.28, 0.02);
+      wing.lineTo(s * 0.2, -0.04);
+      wing.lineTo(s * 0.14, 0.02);
+      wing.lineTo(s * 0.08, -0.06);
+      wing.lineTo(0, 0);
+      const m = new THREE.Mesh(new THREE.ExtrudeGeometry(wing, { depth: 0.012, bevelEnabled: false }), new THREE.MeshToonMaterial({ color: darker(a.skin, 0.75), side: THREE.DoubleSide }));
+      m.position.set(s * 0.05, 0.32, -0.12 * w);
+      m.rotation.set(0.3, s * -0.5, 0);
+      m.castShadow = true;
+      torso.add(m);
+    }
+  }
+  if (look.animal === 'bird') {
+    // A fan of scruffy tail feathers.
+    for (const k of [-1, 0, 1]) torso.add(tuft(darker(a.skin, 0.7), k * 0.05, -0.02, -0.15, -2.0, k * 0.4, 0.2));
+  }
+  if (!bare && look.cls === 'thief') {
     const cape = lathe([[0.17, -0.1], [0.13, 0.2], [0.08, 0.4]], look.costume, 14);
     cape.scale.set(1.05, 1, 0.9);
     cape.position.z = -0.03;
@@ -456,7 +527,7 @@ export function buildHero(look: HeroLook): HeroRig {
   let tail: THREE.Object3D | null = null;
   if (look.animal === 'dragon' || look.animal === 'lizard') {
     tail = new THREE.Group();
-    const t = lathe([[0.05, 0], [0.03, 0.25], [0.001, 0.45]], tailCol, 10);
+    const t = lathe(dragon ? [[0.09, 0], [0.06, 0.25], [0.001, 0.5]] : [[0.05, 0], [0.03, 0.25], [0.001, 0.45]], tailCol, 10);
     tail.add(t);
     tail.position.set(0, 0.0, -0.12);
     tail.rotation.x = -2.1;
@@ -474,10 +545,11 @@ export function buildHero(look: HeroLook): HeroRig {
   }
   if (tail) torso.add(tail);
 
-  const neck = part(new THREE.CylinderGeometry(0.035, 0.04, 0.12, 8), a.skin, 0, 0.46, 0);
+  const bird = look.animal === 'bird';
+  const neck = part(new THREE.CylinderGeometry(0.03, 0.04, bird ? 0.24 : 0.12, 8), a.skin, 0, bird ? 0.52 : 0.46, 0);
   torso.add(neck);
-  const { head, lids } = buildHead(look);
-  head.position.y = 0.62;
+  const { head, lids } = buildHead(look, a, bare);
+  head.position.y = bird ? 0.71 : 0.62;
   torso.add(head);
   const headTop = new THREE.Object3D();
   headTop.position.y = 0.42;
@@ -506,11 +578,14 @@ export function buildHero(look: HeroLook): HeroRig {
   const hand = new THREE.Group();
   hand.position.set(0, -0.22, 0.01);
   forearms[1].add(hand);
+  const handL = new THREE.Group();
+  handL.position.set(0, -0.22, 0.01);
+  forearms[0].add(handL);
   const { g: weapon, tip } = buildWeapon(look);
-  hand.add(weapon);
+  if (!bare) hand.add(weapon);
   // Resting grip: halberd upright, sword and club pointing ahead and up, crossbow forward.
   weapon.rotation.x = look.cls === 'knight' ? 0.35 : look.cls === 'thief' ? 0 : 0.9;
-  if (look.cls === 'knight') {
+  if (!bare && look.cls === 'knight') {
     const shield = new THREE.Group();
     const face = part(new THREE.CylinderGeometry(0.16, 0.16, 0.03, 20), look.costume);
     face.rotation.x = Math.PI / 2;
@@ -797,6 +872,166 @@ export function buildHero(look: HeroLook): HeroRig {
         sp.rot('shinR', 0.6 * k);
         break;
       }
+      case 'jump': {
+        // Knees tucked, arms up for balance.
+        sp.pos('body', 0, 0.05, 0);
+        sp.rot('thighL', -0.9);
+        sp.rot('thighR', -0.5);
+        sp.rot('shinL', 1.3);
+        sp.rot('shinR', 0.9);
+        sp.rot('armL', -0.8, 0, -0.9);
+        sp.rot('armR', -1.0, 0, 0.7);
+        sp.rot('torso', 0.15);
+        break;
+      }
+      case 'crouch':
+      case 'crouchblock': {
+        sp.pos('body', 0, -0.2, 0);
+        sp.rot('thighL', -1.1);
+        sp.rot('thighR', -0.7);
+        sp.rot('shinL', 1.7);
+        sp.rot('shinR', 1.5);
+        sp.rot('torso', 0.4);
+        sp.rot('head', -0.15);
+        if (pose === 'crouchblock') {
+          sp.rot('armL', -1.5, 0.5, -0.2);
+          sp.rot('foreL', -1.2);
+          sp.rot('armR', -1.2, -0.2, 0.3);
+          sp.rot('foreR', -1.0);
+        }
+        break;
+      }
+      case 'sweep': {
+        // Drop low and swing at the ankles.
+        const [wu, st] = phases(p, hit);
+        snap = st > 0 ? 1.9 : 1.2;
+        const cock = wu * (1 - st), thru = st;
+        sp.pos('body', 0, -0.22, 0.05 * thru);
+        sp.rot('thighL', -1.2);
+        sp.rot('thighR', -0.3);
+        sp.rot('shinL', 1.6);
+        sp.rot('shinR', 1.2);
+        sp.rot('torso', 0.7, 0.6 * cock - 0.7 * thru);
+        sp.rot('armR', -0.3 - 0.4 * thru, 0.8 * cock - 1.0 * thru, 0.6);
+        sp.rot('foreR', -0.4 * cock);
+        break;
+      }
+      case 'rising': {
+        // Spring up from a crouch with an upward swing.
+        const [wu, st] = phases(p, hit);
+        snap = st > 0 ? 2.1 : 1.2;
+        const cock = wu * (1 - st), thru = st;
+        sp.pos('body', 0, -0.2 * cock + 0.15 * thru, 0);
+        sp.rot('thighL', -1.0 * cock);
+        sp.rot('shinL', 1.5 * cock);
+        sp.rot('thighR', -0.6 * cock);
+        sp.rot('shinR', 1.2 * cock);
+        sp.rot('torso', 0.5 * cock - 0.25 * thru);
+        sp.rot('armR', 0.2 * cock - 2.8 * thru, 0, 0.3);
+        sp.rot('armL', -0.5, 0, -0.6);
+        sp.rot('head', -0.3 * thru);
+        break;
+      }
+      case 'airslash': {
+        // A chop from the air, legs tucked.
+        const [wu, st] = phases(p, hit);
+        snap = st > 0 ? 2 : 1.3;
+        const cock = wu * (1 - st), thru = st;
+        sp.rot('thighL', -0.9);
+        sp.rot('thighR', -0.6);
+        sp.rot('shinL', 1.3);
+        sp.rot('shinR', 1.0);
+        sp.rot('armR', -2.8 * cock - 0.6 * thru, 0, 0.2);
+        sp.rot('armL', -2.6 * cock - 0.4 * thru, 0, -0.2);
+        sp.rot('torso', -0.3 * cock + 0.45 * thru);
+        break;
+      }
+      case 'down': {
+        // Knocked flat on your back, getting up.
+        const k = Math.min(1, t / 0.25);
+        sp.rot('body', -1.4 * k);
+        sp.pos('body', 0, 0.1 * k);
+        sp.rot('armL', -2.2 * k, 0, -0.5);
+        sp.rot('armR', -2.2 * k, 0, 0.5);
+        break;
+      }
+      case 'sit':
+      case 'read':
+      case 'knit':
+      case 'snore':
+      case 'puff': {
+        // Sitting down (on an armchair or a stool that isn't drawn), doing their thing.
+        sp.pos('body', 0, -0.22, -0.08);
+        sp.rot('thighL', -1.5, 0, -0.1);
+        sp.rot('thighR', -1.5, 0, 0.1);
+        sp.rot('shinL', 1.5);
+        sp.rot('shinR', 1.5);
+        sp.rot('torso', -0.1);
+        if (pose === 'read') {
+          sp.rot('armL', -1.0, 0.4, -0.1);
+          sp.rot('armR', -1.0, -0.4, 0.1);
+          sp.rot('foreL', -1.2);
+          sp.rot('foreR', -1.2);
+          sp.rot('head', 0.35 + Math.sin(t * 0.5) * 0.05, Math.sin(t * 0.8) * 0.15);
+        } else if (pose === 'knit') {
+          const k = Math.sin(t * 9);
+          sp.rot('armL', -0.9, 0.5, -0.1);
+          sp.rot('armR', -0.9, -0.5, 0.1);
+          sp.rot('foreL', -1.3 + k * 0.15);
+          sp.rot('foreR', -1.3 - k * 0.15);
+          sp.rot('head', 0.3);
+        } else if (pose === 'snore') {
+          const b = Math.sin(t * 1.3);
+          sp.rot('torso', -0.25 + b * 0.04);
+          sp.rot('head', 0.5, 0, 0.3);
+          sp.rot('armL', 0.1, 0, -0.4);
+          sp.rot('armR', -0.5, 0, 0.3);
+          sp.rot('foreR', -1.2);
+        } else if (pose === 'puff') {
+          // Pipe to the mouth now and then.
+          const up = Math.max(0, Math.sin(t * 0.7));
+          sp.rot('armR', -0.6 - 0.9 * up, -0.3 * up, 0.2);
+          sp.rot('foreR', -1.0 - 1.0 * up);
+          sp.rot('head', -0.1 * up, Math.sin(t * 0.3) * 0.3);
+        } else {
+          sp.rot('armL', -0.5, 0, -0.2);
+          sp.rot('armR', -0.5, 0, 0.2);
+        }
+        break;
+      }
+      case 'stir': {
+        // Stirring a big pot with a long spoon, round and round.
+        const a2 = t * 3;
+        sp.rot('torso', 0.3 + Math.sin(a2) * 0.05, Math.cos(a2) * 0.15);
+        sp.rot('armR', -1.2 + Math.sin(a2) * 0.2, Math.cos(a2) * 0.4, 0.2);
+        sp.rot('foreR', -0.7);
+        sp.rot('armL', -0.3, 0, -0.5);
+        sp.rot('head', 0.3, Math.sin(t * 0.6) * 0.3);
+        break;
+      }
+      case 'play': {
+        // Crouched on the floor, flicking marbles / poking at bugs, bouncing with excitement.
+        sp.pos('body', 0, -0.2 + Math.abs(Math.sin(t * 3)) * 0.04, 0);
+        sp.rot('thighL', -1.3);
+        sp.rot('thighR', -1.3);
+        sp.rot('shinL', 1.8);
+        sp.rot('shinR', 1.8);
+        sp.rot('torso', 0.5);
+        sp.rot('armR', -1.2 + Math.max(0, Math.sin(t * 4)) * 0.6, 0, 0.2);
+        sp.rot('armL', -0.9, 0, -0.3);
+        sp.rot('head', 0.3, Math.sin(t * 1.4) * 0.4);
+        break;
+      }
+      case 'peek': {
+        // Peeking out from behind something, then ducking back.
+        const out = Math.max(0, Math.sin(t * 0.9));
+        sp.pos('body', -0.15 + out * 0.15, -0.12, 0);
+        sp.rot('body', 0, 0, 0.25 * out);
+        sp.rot('armL', -1.6, 0, -0.4);
+        sp.rot('foreL', -1.4);
+        sp.rot('head', 0, 0.3 * out, 0.2 * out);
+        break;
+      }
       case 'kneel': {
         // Down on one knee, arms open: come here, little one.
         sp.pos('body', 0, -0.16, 0);
@@ -840,7 +1075,7 @@ export function buildHero(look: HeroLook): HeroRig {
   };
 
   return {
-    root, headTop, hand, tip, chest, animate,
+    root, headTop, hand, tip, chest, head, handL, animate,
     flinch(strength = 1) {
       sp.kick('torso', -9 * strength, (Math.random() - 0.5) * 6 * strength, 0);
       sp.kick('head', -12 * strength, 0, (Math.random() - 0.5) * 8 * strength);

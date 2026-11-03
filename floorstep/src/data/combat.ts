@@ -41,7 +41,7 @@ const swing = (pose: 'swing1' | 'swing2', damage: number, reach: number): MeleeM
 
 export const COMBAT: Record<HeroClass, ClassCombat> = {
   wizard: {
-    maxHp: 8,
+    maxHp: 9,
     speed: 1,
     combo: [swing('swing1', 1, 1.0), swing('swing2', 1, 1.0), { pose: 'heavy', hit: 0.2, total: 0.55, damage: 1.5, reach: 1.05, arc: 50, stamina: 12, push: 0.4 }],
     heavy: { pose: 'heavy', hit: 0.38, total: 0.8, damage: 2.5, reach: 1.1, arc: 45, stamina: 22, push: 0.6, stun: 0.5 },

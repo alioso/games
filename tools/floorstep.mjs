@@ -52,6 +52,8 @@ if (mode === 'shots' || mode === 'all') {
   await shot('2-classes');
   await page.evaluate(() => window.floorstep.start('medium', 'wizard', 4242));
   await wait(600);
+  // Exploring only: send the monster away so it doesn't start a fight scene.
+  await page.evaluate(() => window.floorstep.floor.combat.monsters.forEach((m) => m.vanish()));
   await shot('3-arrive');
   await wait(2500);
   await shot('4-start-room');

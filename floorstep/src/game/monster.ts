@@ -45,6 +45,8 @@ export interface MonsterWorld {
   /** Remember how hurt it is for the next floor. */
   record(m: Monster): void;
   minionCount(): number;
+  /** It has seen the hero: time for a fight scene. */
+  startDuel(m: Monster): void;
 }
 
 type State = 'lurk' | 'hunt' | 'fight' | 'attack' | 'recover' | 'hurt' | 'stun' | 'retreat' | 'flee' | 'gone' | 'dead' | 'confused';
@@ -219,7 +221,11 @@ export class Monster {
     }
   }
 
+  /** Being driven by a fight scene (see duel.ts) rather than its own wandering brain. */
+  inDuel = false;
+
   update(dt: number) {
+    if (this.inDuel || this.state === 'gone') return;
     this.stateT += dt;
     this.cool -= dt;
     this.blind = Math.max(0, this.blind - dt);
@@ -246,7 +252,7 @@ export class Monster {
         this.senseT -= dt;
         if (this.senseT <= 0) {
           this.senseT = 0.25;
-          if (this.notices()) this.spot();
+          if (this.notices()) { this.spot(); this.world.startDuel(this); }
         }
         break;
       }
@@ -259,7 +265,12 @@ export class Monster {
       case 'hunt': {
         if (w.heroDown()) { this.set('lurk'); break; }
         if (this.blind > 0) { this.set('confused'); w.monsterSays(this, '???'); break; }
-        if (d < 3.6) { this.set('fight'); this.planT = 0; break; }
+        // Close enough to see you: fight scene!
+        this.senseT -= dt;
+        if (this.senseT <= 0) {
+          this.senseT = 0.2;
+          if (this.notices()) { this.world.startDuel(this); break; }
+        }
         // Throw, charge or leap from afar when it can see you.
         if (this.cool <= 0 && d < 10 && w.nav().lineFree(this.x, this.z, w.hero.x, w.hero.z)) {
           const a = this.pickAttack(d, true);
@@ -362,7 +373,6 @@ export class Monster {
         }
         break;
       }
-      case 'gone':
       case 'dead':
         break;
     }
@@ -481,7 +491,7 @@ export class Monster {
         if (k < 1) {
           this.x = damp(this.x, this.lockX, 6, dt);
           this.z = damp(this.z, this.lockZ, 6, dt);
-          this.perchY = Math.sin(k * Math.PI) * (a.height ?? 1.6);
+          this.perchY = Math.sin(k * Math.PI) * (a.jump ?? 1.6);
           return;
         }
         if (this.hitIndex === 0) { this.hitIndex = 1; this.perchY = 0; this.resolveHit(a); }
@@ -688,6 +698,51 @@ export class Monster {
     }
     w.record(this);
     return true;
+  }
+
+  /**
+   * A blow landed in a fight scene: health, blood, lost teeth, and running away or dying at its
+   * marks. `dir` is the direction of the blow along the fight line (+1 or -1).
+   */
+  wound(damage: number, dir: number, heavy: boolean): 'ok' | 'flee' | 'dead' {
+    if (!this.alive || this.state === 'flee') return 'ok';
+    const w = this.world;
+    this.hp = Math.max(0, this.hp - damage);
+    w.spray(this.x, 0.7, this.z, dir, 0, Math.min(2, damage * 0.6));
+    this.rig.flinch(heavy ? 1.3 : 0.7);
+    if (heavy && !this.minion && !this.injuries.includes('tooth') && Math.random() < 0.5) {
+      const tooth = this.rig.detach('tooth');
+      if (tooth) { this.injuries.push('tooth'); w.fling(tooth, dir, 0.3); w.pow(this.x, 1.5, this.z, 'CRACK!', '#ffffff', 0.8); }
+    }
+    if (this.hp <= this.fleeHp && (this.fleeHp > 0 || this.hp <= 0)) {
+      if (this.hp <= 0) { this.die(dir, 0); return 'dead'; }
+      this.flee(dir, 0);
+      return 'flee';
+    }
+    w.sound('squeal', this);
+    if (!this.minion && Math.random() < 0.25) w.monsterSays(this, pick(this.def.lines.hurt));
+    w.record(this);
+    return 'ok';
+  }
+
+  /** Draw it where and how a fight scene says. */
+  display(dt: number, x: number, y: number, z: number, yaw: number, pose: MonsterPose, speed: number, t: number, p: number, visible = true) {
+    this.x = x;
+    this.z = z;
+    this.yaw = yaw;
+    const r = this.rig.root;
+    r.position.set(x, y, z);
+    r.rotation.y = yaw;
+    r.visible = visible && this.state !== 'gone';
+    this.rig.animate(dt, pose, speed, t, p);
+  }
+
+  /** Leave the fight scene and vanish (after running away). */
+  vanish() {
+    this.world.smoke(this.x, this.z);
+    this.world.sound('poof', this);
+    this.set('gone');
+    this.rig.root.visible = false;
   }
 
   /** A fast, short-tell swipe: punishes standing there mashing buttons. */

@@ -50,24 +50,27 @@ export const KIND_LINES: Partial<Record<FurnitureKind, string[]>> = {
   fireplace: ['Hot hot hot!', 'Just ashes. And a sausage?'],
 };
 
+/** Odd things found while searching. They go in your pocket: some residents want them. */
 export interface JunkItem {
+  id: string;
+  icon: string;
   name: string;
   line: string;
 }
 
 export const JUNK: JunkItem[] = [
-  { name: 'an old sock', line: 'An old sock. Smells like cheese.' },
-  { name: 'a false tooth', line: 'Somebody\'s tooth. Keep it? ...No.' },
-  { name: 'a rubber duck', line: 'A rubber duck! Squeak squeak.' },
-  { name: 'a bone', line: 'A bone. I hope it\'s a chicken bone.' },
-  { name: 'a mouldy sandwich', line: 'A sandwich! ...it\'s green.' },
-  { name: 'a wig', line: 'A wig?! Who wears a wig here?' },
-  { name: 'a spoon', line: 'A spoon. Very useful. Not.' },
-  { name: 'a love letter', line: '"My dearest Gribbles..." Yuck.' },
-  { name: 'a glass eye', line: 'An eye! It\'s looking at me!' },
-  { name: 'a button', line: 'A button. My collection grows.' },
-  { name: 'a dead spider', line: 'A spider. A dead one. I hope.' },
-  { name: 'a dusty crown', line: 'A crown! ...made of cardboard.' },
+  { id: 'sock', icon: '🧦', name: 'an old sock', line: 'An old sock. Smells like cheese. Pocket!' },
+  { id: 'tooth', icon: '🦷', name: 'a false tooth', line: 'Somebody\'s tooth. Somebody might want it back.' },
+  { id: 'duck', icon: '🦆', name: 'a rubber duck', line: 'A rubber duck! Squeak squeak.' },
+  { id: 'bone', icon: '🦴', name: 'a bone', line: 'A bone. I hope it\'s a chicken bone.' },
+  { id: 'sandwich', icon: '🥪', name: 'a mouldy sandwich', line: 'A sandwich! ...it\'s green. Keeping it anyway.' },
+  { id: 'wig', icon: '💇', name: 'a wig', line: 'A wig?! Who wears a wig here?' },
+  { id: 'spoon', icon: '🥄', name: 'a spoon', line: 'A spoon. Someone will want this.' },
+  { id: 'letter', icon: '💌', name: 'a love letter', line: '"My dearest Gribbles..." Yuck.' },
+  { id: 'eye', icon: '👁️', name: 'a glass eye', line: 'An eye! It\'s looking at me!' },
+  { id: 'button', icon: '🔘', name: 'a button', line: 'A button. My collection grows.' },
+  { id: 'spider', icon: '🕷️', name: 'a dead spider', line: 'A spider. A dead one. I hope.' },
+  { id: 'crown', icon: '👑', name: 'a dusty crown', line: 'A crown! ...made of cardboard.' },
 ];
 
 export const HEALS = [

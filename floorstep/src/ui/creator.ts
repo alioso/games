@@ -6,7 +6,7 @@ import type { Difficulty } from '../data/tuning';
 import { SFX } from '../game/sounds';
 
 const CLASS_ORDER: HeroClass[] = ['wizard', 'knight', 'barbarian', 'thief'];
-const ANIMAL_NAMES: Record<string, string> = { duck: 'Duck', cat: 'Cat', dog: 'Dog', dragon: 'Dragon', bear: 'Bear', pig: 'Pig', lizard: 'Lizard', rabbit: 'Rabbit' };
+const ANIMAL_NAMES: Record<string, string> = { duck: 'Duck', cat: 'Cat', dog: 'Dog', dragon: 'Dragon', bear: 'Bear', pig: 'Pig', lizard: 'Lizard', rabbit: 'Rabbit', bird: 'Weird bird' };
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
 
 type Row = 'cls' | 'animal' | 'sex' | 'costume' | 'accent' | 'weapon' | 'name' | 'start';
