@@ -273,6 +273,7 @@ function onEvent(e: MatchEvent) {
     case 'foul': SFX.foul(e.penalty); break;
     case 'card': SFX.card(e.red); break;
     case 'offside': SFX.offside(); break;
+    case 'voice': SFX.voice(e.who.team.id, e.mood, e.who.x); break;
     case 'banner': hud.showBanner(e.text, e.sub, e.time, e.color); break;
     case 'fulltime': fullTimeAt = performance.now() / 1000 + 3; break;
     case 'halftime': break;

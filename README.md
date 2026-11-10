@@ -193,7 +193,14 @@ away from the keeper. At set pieces a line at the bottom says which buttons do w
 **Sounds** (`soccer/src/game/sounds.ts`) are made on the fly: the ball's pock and thump (harder kicks deeper, with
 a whoosh), the referee's pea whistle, a ringing post, the net, and a crowd that murmurs, swells near the goals,
 "ooh"s, roars at goals (with a horn), groans, boos fouls, applauds saves, hushes for penalties and chants now and then.
-Sounds are panned to where they happen on screen.
+Every animal has its own voice (quacks, oinks, woofs, meows, squeaks, roars, chitters, and the owl referee hooting
+as the card comes out): happy calls when they score or make a big save, a cry when fouled, a sad one when they
+let a goal in. Sounds are panned to where they happen on screen.
+
+**The animals** blink, and their faces show how they feel: a grin when celebrating (the duck's beak drops
+open), a frown and heavy eyes after letting one in, eyes screwed shut when hurt, gritted teeth in a hard kick or
+tackle. Ears bounce with each step and sweep back at a sprint (the dog's flap, the bunny's stream behind),
+twitch now and then, droop when sad; tails wag (the dog's madly when happy), sway (the cat's) or tuck in.
 
 **Goal celebrations** come round from a shuffled pack (all seven before any repeats): the corner pile-on, a knee
 slide, the airplane (the whole team flying behind in a line), a backflip with the others clapping, a team dance in
@@ -243,6 +250,7 @@ node tools/soccer-touch.mjs           # ball control: distance from the feet whi
 node tools/soccer-poses.mjs           # freezes one player through a run and a kick, close up (tools/shots/soccer/pose-*.png)
 node tools/soccer-celebrations.mjs [--close] [kind ...]  # forces a goal per celebration, frames of each (celeb-<kind>-*.png)
 node tools/soccer-celeb-poses.mjs     # the celebration poses frozen side-on (tools/shots/soccer/celeb-poses.png)
+node tools/soccer-faces.mjs           # every animal's face: calm, happy, sad, ouch, effort, running (faces.png)
 node tools/soccer-closeup.mjs         # zoomed-in burst of frames while the computer plays, plus the goal
 node tools/soccer-sheet.mjs           # picture of all eight teams (tools/shots/soccer/teams.png)
 ```

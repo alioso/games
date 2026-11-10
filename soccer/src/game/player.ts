@@ -3,7 +3,7 @@
 // human's controls or the team's brain set the wanted movement and start actions.
 import { PLAYER } from '../data/tuning';
 import type { Kit, Team } from '../data/teams';
-import { type KickStyle, type Pose, PlayerRig } from '../entities/playerModel';
+import { type KickStyle, type Mood, type Pose, PlayerRig } from '../entities/playerModel';
 
 export type Role = 'gk' | 'def' | 'mid' | 'fwd';
 export type PState = 'free' | 'kick' | 'header' | 'tackle' | 'slide' | 'down' | 'stunned' | 'dive' | 'hold' | 'throw' | 'celebrate';
@@ -44,6 +44,8 @@ export class Player {
   private celebAt = 0;
   /** Just let a goal in: head down when standing around. */
   glum = false;
+  /** Pleased with themselves for a moment (won a tackle, made a save): seconds left. */
+  cheer = 0;
   /** Jumping (a wall going up for a free kick): upward speed. */
   private jumpV = 0;
   /** Holding the ball over their head (throw-in) rather than at the chest (keeper). */
@@ -139,6 +141,7 @@ export class Player {
     this.stateT += dt;
     this.noTouch = Math.max(0, this.noTouch - dt);
     this.touchT += dt;
+    this.cheer = Math.max(0, this.cheer - dt);
     let maxSpeed = (this.sprint ? PLAYER.sprint : PLAYER.jog) * this.speedMul * (withBall ? PLAYER.withBall : 1);
     let wantX = this.mx * maxSpeed, wantZ = this.mz * maxSpeed;
     let accel: number = PLAYER.accel;
@@ -276,11 +279,18 @@ export class Player {
       case 'hold': pose = this.overhead ? 'throw' : 'hold'; break;
       default: pose = this.state;
     }
+    // How they feel: thrilled after a goal, gutted after letting one in, hurt on the floor, straining in a kick or tackle.
+    let mood: Mood | undefined;
+    if (this.state === 'celebrate' || this.cheer > 0) mood = 'happy';
+    else if (this.state === 'down' || this.state === 'stunned') mood = 'ouch';
+    else if (this.glum) mood = 'sad';
+    else if (this.state === 'tackle' || this.state === 'slide' || this.state === 'header' || this.state === 'dive' || (this.state === 'kick' && this.stateT < this.kickContact + 0.15 && this.kickPower > 0.45)) mood = 'effort';
     // Look at the ball (within reason).
     let look = Math.atan2(ballX - this.x, ballZ - this.z) - this.yaw;
     look = Math.atan2(Math.sin(look), Math.cos(look));
+    if (this.state === 'celebrate') look = 0;
     r.animate({
-      pose, t: this.state === 'hold' ? 0 : this.state === 'celebrate' ? this.celebT : this.stateT, speed: sp, phase: this.stride, side: this.diveSide, look: Math.max(-0.9, Math.min(0.9, look)),
+      pose, mood, t: this.state === 'hold' ? 0 : this.state === 'celebrate' ? this.celebT : this.stateT, speed: sp, phase: this.stride, side: this.diveSide, look: Math.max(-0.9, Math.min(0.9, look)),
       kick: { contact: this.kickContact, power: this.kickPower, kind: this.kickStyle },
       touch: this.touchT < 0.22 ? 1 - this.touchT / 0.22 : 0, touchFoot: this.touchFoot,
       lean: this.state === 'free' || this.state === 'hold' || pose === 'run' || pose === 'airplane' ? { side: this.leanSide, fwd: this.leanFwd } : undefined,

@@ -77,7 +77,8 @@ export class TeamBrain {
 
     for (const p of side.players) {
       if (!this.mine(p)) continue;
-      p.faceYaw = Math.atan2(b.pos.x - p.x, b.pos.z - p.z);
+      // Watch the ball (celebrating players face where the celebration wants).
+      if (p.state !== 'celebrate') p.faceYaw = Math.atan2(b.pos.x - p.x, b.pos.z - p.z);
       if (p.state === 'celebrate' || phase === 'goal' || phase === 'halftime' || phase === 'fulltime') continue;
       if (p.role === 'gk') { this.keeper(p, dt); continue; }
       if (reading) continue;

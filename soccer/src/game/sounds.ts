@@ -7,6 +7,8 @@
 // - The crowd: a murmur of thousands (babbling voices and noise in a big stadium echo) that swells as
 //   play gets near a goal, and reacts: "ooh", "yeah!", "aww", boos, applause, a hush before a
 //   penalty, and now and then a chant with claps.
+// - The animals: each team's own call (quack, oink, woof, meow, squeak, roar, chitter, and the owl
+//   referee's hoot), happy when they score, hurt when fouled, sad when they let one in.
 //
 // Sounds are panned by where they happen relative to the camera. Nothing here plays until the
 // first key / click / pad press (browsers need that).
@@ -337,6 +339,157 @@ class SoccerAudio {
     }
     this.ooh(0.25);
     this.applause(t + 0.6, 1.8, 0.1, 30);
+  }
+
+  // ---------- the animals ----------
+
+  /**
+   * One animal call: a buzzy (or pure) tone bending through a pitch contour (points spread evenly
+   * over the call), through mouth/nose resonances that can move, plus breath, a fast flutter (a
+   * growl's rattle, a chitter) and vibrato as wanted.
+   */
+  private call(o: {
+    t: number; dest: AudioNode; dur: number; vol: number; pitch: number[];
+    wave?: OscillatorType; formants?: { f: number[]; q: number; amp?: number }[]; lowpass?: number;
+    noise?: number; flutter?: [number, number]; vibrato?: [number, number]; attack?: number;
+  }) {
+    const ctx = this.ctx!;
+    const { t, dur } = o;
+    const src = ctx.createOscillator();
+    src.type = o.wave ?? 'sawtooth';
+    src.frequency.setValueAtTime(o.pitch[0], t);
+    const steps = o.pitch.length - 1;
+    o.pitch.slice(1).forEach((f, i) => src.frequency.exponentialRampToValueAtTime(f, t + (dur * (i + 1)) / steps));
+    if (o.vibrato) {
+      const d = ctx.createGain();
+      d.gain.value = o.pitch[0] * o.vibrato[1];
+      this.osc('sine', o.vibrato[0], t, dur).connect(d).connect(src.frequency);
+    }
+    src.start(t);
+    src.stop(t + dur + 0.05);
+    const mix = ctx.createGain();
+    src.connect(mix);
+    if (o.noise) {
+      const n = ctx.createGain();
+      n.gain.value = o.noise;
+      this.noise(t, dur).connect(n).connect(mix);
+    }
+    let body: AudioNode = mix;
+    if (o.flutter) {
+      const am = ctx.createGain();
+      am.gain.value = 1 - o.flutter[1] / 2;
+      const d = ctx.createGain();
+      d.gain.value = o.flutter[1] / 2;
+      this.osc('sine', o.flutter[0], t, dur).connect(d).connect(am.gain);
+      mix.connect(am);
+      body = am;
+    }
+    const env = ctx.createGain();
+    const a = Math.min(o.attack ?? 0.012, dur * 0.4);
+    env.gain.setValueAtTime(0.0001, t);
+    env.gain.exponentialRampToValueAtTime(o.vol, t + a);
+    env.gain.setValueAtTime(o.vol, t + Math.max(a, dur * 0.65));
+    env.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    if (o.formants) {
+      for (const fm of o.formants) {
+        const bp = ctx.createBiquadFilter();
+        bp.type = 'bandpass';
+        bp.Q.value = fm.q;
+        bp.frequency.setValueAtTime(fm.f[0], t);
+        const n = fm.f.length - 1;
+        fm.f.slice(1).forEach((f, i) => bp.frequency.linearRampToValueAtTime(f, t + (dur * (i + 1)) / n));
+        const g = ctx.createGain();
+        // Narrow filters pass less: make up for it so the call keeps its loudness.
+        g.gain.value = (fm.amp ?? 1) * Math.sqrt(fm.q) * 1.3;
+        body.connect(bp).connect(g).connect(env);
+      }
+    } else {
+      body.connect(this.filter('lowpass', o.lowpass ?? 4000, 0.7)).connect(env);
+    }
+    env.connect(o.dest);
+    const e = ctx.createGain();
+    e.gain.value = 0.25;
+    env.connect(e).connect(this.hall);
+  }
+
+  /** A player's own noise, in a mood: happy (scored, saved), ouch (fouled), sad (let one in), card (the referee). */
+  voice(animal: string, mood: 'happy' | 'sad' | 'ouch' | 'card', x?: number) {
+    if (!this.ready()) return;
+    const t0 = this.now + 0.02, dest = this.place(x);
+    const happy = mood === 'happy', sad = mood === 'sad', ouch = mood === 'ouch';
+    // Excited calls come higher and in bunches; sad ones lower, slower and alone.
+    const up = (happy ? 1.1 : sad ? 0.8 : 1) * rnd(0.94, 1.06);
+    const slow = sad ? 1.7 : 1;
+    const rep = (count: number, gap: number, fn: (at: number, i: number) => void) => {
+      for (let i = 0; i < count; i++) fn(t0 + i * gap * rnd(0.92, 1.08), i);
+    };
+    const n = happy ? 3 : 1;
+    const P = (...fs: number[]) => fs.map((f) => f * up);
+    switch (animal) {
+      case 'duck':
+        if (ouch) { this.call({ t: t0, dest, dur: 0.22, vol: 0.5, pitch: P(650, 820, 420), formants: [{ f: [1300], q: 4 }, { f: [2700], q: 6, amp: 0.5 }], noise: 0.1 }); break; }
+        rep(n, 0.19 * slow, (at, i) => this.call({
+          t: at, dest, dur: 0.15 * slow, vol: 0.45, pitch: sad ? P(420, 360, 250) : P(500 + i * 25, 420, 320), attack: 0.008, noise: 0.08,
+          formants: [{ f: [1150, 850], q: 5 }, { f: [2500], q: 7, amp: 0.6 }, { f: [330], q: 3, amp: 0.4 }],
+        }));
+        break;
+      case 'pig':
+        if (ouch) { this.call({ t: t0, dest, dur: 0.4, vol: 0.32, pitch: P(700, 1150, 800), formants: [{ f: [1250], q: 3 }, { f: [2800], q: 6, amp: 0.4 }], noise: 0.1 }); break; }
+        rep(n, 0.27 * slow, (at) => this.call({
+          t: at, dest, dur: (sad ? 0.5 : 0.21), vol: sad ? 0.65 : 0.5, pitch: sad ? P(180, 150, 100) : P(190, 240, 150), noise: 0.3, flutter: [34, 0.55], attack: 0.01,
+          formants: [{ f: [480], q: 4 }, { f: [1050], q: 5, amp: 0.6 }],
+        }));
+        break;
+      case 'dog':
+        if (ouch) { this.call({ t: t0, dest, dur: 0.25, vol: 0.27, pitch: P(1000, 1350, 700), formants: [{ f: [1300], q: 3 }, { f: [2600], q: 5, amp: 0.4 }] }); break; }
+        if (sad) { this.call({ t: t0, dest, dur: 0.75, vol: 0.3, wave: 'triangle', pitch: P(850, 1050, 700), vibrato: [6, 0.03], lowpass: 2200, attack: 0.08 }); break; }
+        rep(n, 0.24, (at) => this.call({
+          t: at, dest, dur: 0.16, vol: 0.55, pitch: P(380, 310, 190), attack: 0.006, noise: 0.3,
+          formants: [{ f: [700, 480], q: 3 }, { f: [1400], q: 4, amp: 0.5 }],
+        }));
+        break;
+      case 'cat':
+        if (ouch) {
+          this.burst(t0, 4500, 0.8, 0.3, 0.18, dest);
+          this.call({ t: t0 + 0.05, dest, dur: 0.3, vol: 0.3, pitch: P(900, 1300, 1000), formants: [{ f: [1200], q: 3 }, { f: [3000], q: 5, amp: 0.5 }] });
+          break;
+        }
+        rep(happy ? 2 : 1, 0.5, (at) => this.call({
+          t: at, dest, dur: (happy ? 0.42 : 0.55) * slow, vol: happy ? 0.26 : 0.32, pitch: sad ? P(480, 520, 300) : P(520, 780, 720, 480), attack: 0.03,
+          formants: [{ f: [350, 850, 800, 450], q: 4 }, { f: [2600, 1500, 1200, 900], q: 6, amp: 0.7 }],
+        }));
+        break;
+      case 'bunny':
+        rep(happy ? 3 : 1, 0.13, (at) => this.call({
+          t: at, dest, dur: ouch ? 0.18 : sad ? 0.3 : 0.09, vol: 0.3, wave: 'sine', lowpass: 6000, attack: 0.005,
+          pitch: ouch ? P(1800, 2400, 1300) : sad ? P(1300, 1000) : P(1400, 1900, 1500),
+        }));
+        break;
+      case 'mouse':
+        rep(happy ? 4 : 1, 0.09, (at) => this.call({
+          t: at, dest, dur: ouch ? 0.14 : sad ? 0.25 : 0.06, vol: 0.36, wave: 'triangle', lowpass: 8000, attack: 0.004,
+          pitch: ouch ? P(3200, 4200, 2600) : sad ? P(2600, 2000) : P(2800, 3500, 3000),
+        }));
+        break;
+      case 'bear':
+        if (ouch) { this.call({ t: t0, dest, dur: 0.22, vol: 0.75, pitch: P(170, 100), noise: 0.3, flutter: [26, 0.6], formants: [{ f: [450], q: 2.5 }, { f: [1000], q: 3, amp: 0.4 }] }); break; }
+        this.call({
+          t: t0, dest, dur: (happy ? 0.9 : 1.0) * (sad ? 1.1 : 1), vol: 0.75, pitch: sad ? P(100, 80, 70) : P(110, 155, 95), noise: 0.4, flutter: [30, 0.6], attack: 0.07,
+          formants: [{ f: sad ? [380, 330] : [420, 720, 500], q: 2.5 }, { f: [1100], q: 3, amp: 0.5 }],
+        });
+        break;
+      case 'raccoon':
+        rep(happy ? 2 : 1, 0.45, (at) => this.call({
+          t: at, dest, dur: ouch ? 0.25 : sad ? 0.5 : 0.35, vol: sad ? 0.45 : ouch ? 0.27 : 0.21, wave: 'square', flutter: [sad ? 14 : 28, 1],
+          pitch: ouch ? P(1500, 2200, 1400) : sad ? P(1000, 780) : P(1300, 1100),
+          formants: [{ f: [1600], q: 3 }, { f: [3000], q: 5, amp: 0.4 }],
+        }));
+        break;
+      case 'owl':
+        // The referee: hoo-hoo.
+        rep(2, 0.38, (at) => this.call({ t: at, dest, dur: 0.28, vol: 0.3, wave: 'sine', pitch: [410, 375], lowpass: 900, noise: 0.04, attack: 0.06 }));
+        break;
+    }
   }
 
   // ---------- the referee ----------

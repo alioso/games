@@ -80,7 +80,9 @@ export type MatchEvent =
   | { kind: 'offside' }
   | { kind: 'halftime' }
   | { kind: 'fulltime' }
-  | { kind: 'miss' };
+  | { kind: 'miss' }
+  /** An animal call: the player's own noise (a quack, a woof...) in a mood. */
+  | { kind: 'voice'; who: Player; mood: 'happy' | 'sad' | 'ouch' | 'card' };
 
 export interface MatchOptions {
   home: Team;
@@ -135,6 +137,9 @@ export class Match {
   leader: Player | null = null;
   celebration: Celebration = 'pile';
   private celebPack: Celebration[] = [];
+  /** Animal calls still to come in this celebration (phase time), and the referee's hoot for a card. */
+  private celebCalls: number[] = [];
+  private cardHoot = 0;
   /** Make side 0 play itself (tests, attract mode). */
   autopilot = false;
   /** The last kick or throw (which side, when): the other team needs a moment to read it. */
@@ -307,6 +312,7 @@ export class Match {
     this.walkOff();
     for (const p of this.players) p.update(dt, this.ball.owner === p);
     if (!this.training) this.referee.update(dt, this.time, this.ball.pos.x, this.ball.pos.z);
+    if (this.cardHoot && this.time > this.cardHoot) { this.cardHoot = 0; this.emit({ kind: 'voice', who: this.referee.p, mood: 'card' }); }
     this.separate();
     this.phaseLogic(dt);
     this.runOrders();
@@ -791,7 +797,9 @@ export class Match {
       if (owner) {
         owner.setState(sliding ? 'down' : 'stunned');
         owner.noTouch = 0.6;
+        if (sliding && Math.random() < 0.6) this.emit({ kind: 'voice', who: owner, mood: 'ouch' });
       }
+      p.cheer = 1.2;
       this.emit({ kind: 'tackle', won: true });
     }
   }
@@ -810,6 +818,7 @@ export class Match {
     this.offside = null;
     on.setState('down');
     on.noTouch = 1;
+    this.emit({ kind: 'voice', who: on, mood: 'ouch' });
     const x = Math.max(-L + 0.6, Math.min(L - 0.6, on.x)), z = Math.max(-W + 0.6, Math.min(W - 0.6, on.z));
     // In the offender's own penalty area: a penalty.
     const own = -bySide.dir * L;
@@ -832,6 +841,7 @@ export class Match {
       if (card === 1) this.yellows.set(by, (this.yellows.get(by) ?? 0) + 1);
       this.referee.card(by, card === 2 ? 0xe02020 : 0xf6d21e, this.time);
       this.emit({ kind: 'card', player: by, red: card === 2 });
+      this.cardHoot = this.time + 1.2;
       const second = card === 2 && (this.yellows.get(by) ?? 0) >= 1;
       this.emit({ kind: 'banner', text: inBox ? 'PENALTY!' : card === 2 ? 'RED CARD!' : 'YELLOW CARD', sub: `${card === 2 ? (second ? 'Second yellow: off you go, ' : 'Sent off: ') : inBox ? 'Yellow card for ' : 'Foul by '}${who}`, time: 2.4, color: card === 2 ? '#ff5040' : undefined });
       if (card === 2) this.sendOff(by);
@@ -1124,6 +1134,7 @@ export class Match {
       if (Math.random() < chance) {
         this.catch(k);
         this.emit({ kind: 'save', catch: true });
+        if (sp > 8) { k.cheer = 1.5; if (Math.random() < 0.5) this.emit({ kind: 'voice', who: k, mood: 'happy' }); }
       } else if (sp > 12.5 && Math.random() < 0.35) {
         // Got a hand to it, but it's too hard: it squirms on.
         b.vel.multiplyScalar(0.6);
@@ -1329,7 +1340,11 @@ export class Match {
     this.leader = this.scorer && team.includes(this.scorer) ? this.scorer : [...team].sort((a, c) => near(a) - near(c))[0] ?? null;
     for (const p of team) { p.setState('celebrate'); p.celebPose = 'celebrate'; p.celebrateAs(this.celebration === 'airplane' ? 'airplane' : 'celebrate'); }
     for (const p of this.players) if (p.side !== side) p.glum = true;
+    if (this.leader) this.emit({ kind: 'voice', who: this.leader, mood: 'happy' });
+    this.celebCalls = [1.4, 2.6, 3.6];
+    this.sadCall = 0.9;
   }
+  private sadCall = 0;
 
   private celebrate() {
     const lead = this.leader;
@@ -1355,7 +1370,19 @@ export class Match {
       if (d > 0.5) { p.mx = ((s.x - p.x) / d) * 0.45; p.mz = ((s.z - p.z) / d) * 0.45; } else p.mx = p.mz = 0;
     }
     if (!side || !lead) return;
+    // Someone on the other team is gutted.
+    const losers = this.other(side).players;
+    if (this.sadCall && t > this.sadCall && losers.length) {
+      this.sadCall = 0;
+      this.emit({ kind: 'voice', who: losers[Math.floor(Math.random() * losers.length)], mood: 'sad' });
+    }
     const dir = side.dir;
+    // Whoops and calls from the team as they celebrate.
+    if (this.celebCalls.length && t > this.celebCalls[0]) {
+      this.celebCalls.shift();
+      const who = Math.random() < 0.4 || !mates.length ? lead : mates[Math.floor(Math.random() * mates.length)];
+      this.emit({ kind: 'voice', who, mood: 'happy' });
+    }
     // A slide (knees or belly) once they're running at it and close enough.
     const slideAt = (p: Player, tx: number, tz: number, pose: 'kneeslide' | 'belly') => {
       if (p.celebPose === pose) { p.mx = p.mz = 0; return; }

@@ -40,6 +40,11 @@ const reel = [
   ['red card', 'sfx.card(true)', 2.5],
   ['offside', 'sfx.whistle(0); sfx.offside()', 1.8],
   ['chant', 'sfx["chant"]()', 7.5],
+  // Each animal: happy (scored), then ouch (fouled), then sad (let one in).
+  ...['duck', 'pig', 'dog', 'cat', 'bunny', 'mouse', 'bear', 'raccoon'].map((a) => [
+    `${a}: happy, ouch, sad`, `sfx.voice('${a}', 'happy', 0); setTimeout(() => sfx.voice('${a}', 'ouch', 0), 1300); setTimeout(() => sfx.voice('${a}', 'sad', 0), 2300)`, 4,
+  ]),
+  ['referee owl: card hoot', "sfx.voice('owl', 'card', 0)", 1.6],
 ];
 const info = await page.evaluate(async (reel) => {
   const sfx = window.soccer.sfx;
