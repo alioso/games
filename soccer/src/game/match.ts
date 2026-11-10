@@ -10,6 +10,7 @@ import { curled, groundKick, loftCapped, loftTime, rollSpeed, shot, wobble } fro
 import { Player, type Role, type SideRef } from './player';
 import { TeamBrain } from './ai';
 import { Referee } from './referee';
+import type { TimeOfDay, Weather } from '../data/grounds';
 import type { Pose } from '../entities/playerModel';
 
 const L = PITCH.length / 2, W = PITCH.width / 2, GW = PITCH.goalWidth / 2, R = BALL.radius;
@@ -25,7 +26,7 @@ export interface Side extends SideRef {
   extraPress: boolean;
 }
 
-export type Phase = 'kickoff' | 'play' | 'out' | 'restart' | 'goal' | 'halftime' | 'fulltime';
+export type Phase = 'kickoff' | 'play' | 'out' | 'restart' | 'goal' | 'replay' | 'halftime' | 'fulltime';
 export type RestartKind = 'kickoff' | 'throw' | 'corner' | 'goalkick' | 'free' | 'penalty';
 
 export interface Restart {
@@ -81,6 +82,8 @@ export type MatchEvent =
   | { kind: 'halftime' }
   | { kind: 'fulltime' }
   | { kind: 'miss' }
+  /** Time for the replay: match time from..to, the goal at this end. */
+  | { kind: 'replay'; from: number; to: number; end: number }
   /** An animal call: the player's own noise (a quack, a woof...) in a mood. */
   | { kind: 'voice'; who: Player; mood: 'happy' | 'sad' | 'ouch' | 'card' };
 
@@ -92,6 +95,11 @@ export interface MatchOptions {
   difficulty: Difficulty;
   /** Just your team, no opponents, no clock. */
   training?: boolean;
+  /** Time of day and weather (drawn at random when not given). */
+  time?: TimeOfDay;
+  weather?: Weather;
+  /** At whose ground: yours (home) or theirs (away); drawn at random when not given. */
+  venue?: 'home' | 'away';
 }
 
 /** Formation, attack-relative: x from -1 (own goal line) to 1, z from -1 to 1 (fractions of half length/width). */
@@ -133,6 +141,10 @@ export class Match {
   /** Button being held for a kick, for the power bar. */
   charge: { power: number } | null = null;
   scorer: Player | null = null;
+  /** Show goal replays (off for the computer playing itself behind the menu). */
+  replays = true;
+  /** The last goal: when, and at which end. */
+  goalAt: { t: number; end: number } | null = null;
   /** Who leads the celebration (the scorer, or for an own goal the nearest attacker), and how. */
   leader: Player | null = null;
   celebration: Celebration = 'pile';
@@ -295,6 +307,8 @@ export class Match {
 
   update(dt: number, input: PadInput) {
     this.events.length = 0;
+    // Everything waits while the replay plays.
+    if (this.phase === 'replay') return;
     this.time += dt;
     this.phaseT += dt;
     this.switchLock = Math.max(0, this.switchLock - dt);
@@ -1204,6 +1218,7 @@ export class Match {
         this.ball.owner = null;
         this.orders.clear();
         this.setPhase('goal');
+        this.goalAt = { t: this.time, end: e.end };
         this.emit({ kind: 'goal', side, scorer: this.scorer, ownGoal });
         this.emit({ kind: 'banner', text: 'GOAL!', sub: ownGoal ? 'Own goal!' : this.scorer ? `#${this.scorer.number} · ${side.team.name}` : side.team.name, time: 3.5 });
         this.startCelebration(side);
@@ -1301,10 +1316,14 @@ export class Match {
       case 'goal':
         this.celebrate();
         if (this.phaseT > 6) {
-          // The team that let it in kicks off.
-          const kickSide = 1 - this.goalSide;
-          this.kickoff(this.sides[kickSide].players.length ? kickSide : 0);
+          if (this.replays && this.goalAt) {
+            // Show it again (the match waits until the replay's over or skipped).
+            this.setPhase('replay');
+            this.emit({ kind: 'replay', from: this.goalAt.t - 3.8, to: this.goalAt.t + 0.9, end: this.goalAt.end });
+          } else this.replayDone();
         }
+        break;
+      case 'replay':
         break;
       case 'halftime':
         for (const p of this.players) { p.mx = p.mz = 0; }
@@ -1323,6 +1342,13 @@ export class Match {
       case 'play':
         break;
     }
+  }
+
+  /** After a goal (and its replay): the team that let it in kicks off. */
+  replayDone() {
+    if (this.phase !== 'goal' && this.phase !== 'replay') return;
+    const kickSide = 1 - this.goalSide;
+    this.kickoff(this.sides[kickSide].players.length ? kickSide : 0);
   }
 
   private startCelebration(side: Side) {
@@ -1618,6 +1644,13 @@ export class Match {
     for (const p of this.players) p.render(dt, this.ball.pos.x, this.ball.pos.z);
     if (!this.training) this.referee.render(dt, this.ball.pos.x, this.ball.pos.z);
     this.ball.render(dt);
+  }
+
+  /** Every model on the pitch (for the replay recorder). */
+  rigs() {
+    const r = this.players.map((p) => p.rig);
+    if (!this.training) r.push(this.referee.p.rig);
+    return r;
   }
 
   /** Where the camera should look, and how close. */

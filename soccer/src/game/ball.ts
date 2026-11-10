@@ -1,7 +1,7 @@
 // The ball: gravity, bounces, rolling friction on grass, air drag, curl from spin, posts, crossbar
 // and nets. It reports what happened (bounces, post hits, goals, going out) so the match can react.
 import * as THREE from 'three';
-import { BALL, PITCH } from '../data/tuning';
+import { BALL, CONDITIONS, PITCH } from '../data/tuning';
 import { buildBall } from '../entities/playerModel';
 import type { Player } from './player';
 
@@ -23,7 +23,12 @@ export type BallEvent =
  */
 export function flight(p: THREE.Vector3, v: THREE.Vector3, spin: THREE.Vector3, h: number) {
   const airborne = p.y > R + 0.005 || v.y > 0.01;
-  if (airborne) v.y -= BALL.gravity * h;
+  if (airborne) {
+    v.y -= BALL.gravity * h;
+    // Wind pushes it about while it's up.
+    v.x += CONDITIONS.windX * h;
+    v.z += CONDITIONS.windZ * h;
+  }
   const s = v.length();
   if (s > 0.01) v.multiplyScalar(Math.max(0, 1 - BALL.drag * s * h));
   if (spin.lengthSq() > 0.01) {
@@ -40,16 +45,17 @@ export function flight(p: THREE.Vector3, v: THREE.Vector3, spin: THREE.Vector3, 
     p.y = R;
     if (v.y < -1.2) {
       impact = -v.y;
-      v.y = impact * BALL.bounce;
-      v.x *= BALL.bounceGrip;
-      v.z *= BALL.bounceGrip;
+      v.y = impact * BALL.bounce * CONDITIONS.bounce;
+      const grip = Math.min(0.97, BALL.bounceGrip * CONDITIONS.grip);
+      v.x *= grip;
+      v.z *= grip;
     } else v.y = 0;
   }
   // Rolling on the grass slows it.
   if (p.y <= R + 0.005 && v.y === 0) {
     const gs = Math.hypot(v.x, v.z);
     if (gs > 0) {
-      const k = Math.max(0, gs - BALL.roll * h) / gs;
+      const k = Math.max(0, gs - BALL.roll * CONDITIONS.roll * h) / gs;
       v.x *= k;
       v.z *= k;
     }
@@ -240,14 +246,16 @@ export class Ball {
       y = Math.max(R, y + vy * ft - a * ft * ft);
       left -= ft;
       if (left <= 0) return out.set(x, y, z);
-      vx *= BALL.bounceGrip;
-      vz *= BALL.bounceGrip;
+      const grip = Math.min(0.97, BALL.bounceGrip * CONDITIONS.grip);
+      vx *= grip;
+      vz *= grip;
     }
     const gs = Math.hypot(vx, vz);
     if (gs < 0.01) return out.set(x, R, z);
-    const stop = gs / BALL.roll;
+    const roll = BALL.roll * CONDITIONS.roll;
+    const stop = gs / roll;
     const tt = Math.min(left, stop);
-    const d = gs * tt - 0.5 * BALL.roll * tt * tt;
+    const d = gs * tt - 0.5 * roll * tt * tt;
     return out.set(x + (vx / gs) * d, R, z + (vz / gs) * d);
   }
 
@@ -263,19 +271,33 @@ export class Ball {
       const s = this.spin.length();
       this.mesh.rotateOnWorldAxis(this.spin.clone().divideScalar(s), s * dt);
     }
-    // The streak: shows from a firm pass upward, stronger the faster it flies.
+    this.dress(this.pos, this.glow);
+  }
+
+  /** How much the streak shows: from a firm pass upward, stronger the faster it flies. */
+  get glow() {
+    return this.owner || this.holder ? 0 : Math.max(0, Math.min(1, (this.speed - 9) / 8));
+  }
+
+  /** Replays: put the ball where it was (turned as it was), with its streak and shadow. */
+  showAt(pos: THREE.Vector3, quat: THREE.Quaternion, glow: number) {
+    this.mesh.position.copy(pos);
+    this.mesh.quaternion.copy(quat);
+    this.dress(pos, glow);
+  }
+
+  /** The streak behind it and the shadow under it. */
+  private dress(pos: THREE.Vector3, glow: number) {
     this.trailPts.pop();
-    this.trailPts.unshift(this.pos.clone());
-    const sp = this.speed;
-    const glow = this.owner || this.holder ? 0 : Math.max(0, Math.min(1, (sp - 9) / 8));
+    this.trailPts.unshift(pos.clone());
     this.trail.children.forEach((c, i) => {
       const m = c as THREE.Mesh;
       m.position.copy(this.trailPts[Math.min(this.trailPts.length - 1, i + 1)]);
       (m.material as THREE.MeshBasicMaterial).opacity = glow * 0.38 * (1 - i / 7);
       m.visible = glow > 0;
     });
-    this.shadow.position.set(this.pos.x, 0.015, this.pos.z);
-    const hgt = this.pos.y - R;
+    this.shadow.position.set(pos.x, 0.015, pos.z);
+    const hgt = pos.y - R;
     this.shadow.scale.setScalar(1 + hgt * 0.25);
     (this.shadow.material as THREE.MeshBasicMaterial).opacity = Math.max(0.08, 0.35 - hgt * 0.06);
   }

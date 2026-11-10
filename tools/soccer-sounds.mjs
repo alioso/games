@@ -45,6 +45,15 @@ const reel = [
     `${a}: happy, ouch, sad`, `sfx.voice('${a}', 'happy', 0); setTimeout(() => sfx.voice('${a}', 'ouch', 0), 1300); setTimeout(() => sfx.voice('${a}', 'sad', 0), 2300)`, 4,
   ]),
   ['referee owl: card hoot', "sfx.voice('owl', 'card', 0)", 1.6],
+  // The fans' songs: a team name with claps, then whole ends making their animal noise.
+  ['chant: "Bun-nies!" (clap clap clap)', "sfx['nameChant'](sfx['ctx'].currentTime + 0.05, 0.45, ['aw', 'ee'])", 6],
+  ['chant: duck end quacking', "sfx['animalChorus'](sfx['ctx'].currentTime + 0.05, 0.45, 'duck')", 6],
+  ['chant: pig end oinking', "sfx['animalChorus'](sfx['ctx'].currentTime + 0.05, 0.45, 'pig')", 6],
+  ['chant: dog end woofing', "sfx['animalChorus'](sfx['ctx'].currentTime + 0.05, 0.45, 'dog')", 6],
+  ['chant: bear end roaring', "sfx['animalChorus'](sfx['ctx'].currentTime + 0.05, 0.45, 'bear')", 6],
+  ['weather: rain', "sfx.weather('rain')", 4],
+  ['weather: wind', "sfx.weather('windy')", 6],
+  ['(weather off)', "sfx.weather('sunny')", 1],
 ];
 const info = await page.evaluate(async (reel) => {
   const sfx = window.soccer.sfx;

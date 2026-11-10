@@ -33,6 +33,12 @@ type Vowel = keyof typeof VOWELS;
 
 const rnd = (a: number, b: number) => a + Math.random() * (b - a);
 
+/** A team's fans: their animal and what they sing. */
+export interface Chanter {
+  animal: string;
+  chant?: [Vowel, Vowel];
+}
+
 class SoccerAudio {
   private ctx: AudioContext | null = null;
   /** Ball, whistle and bodies; the crowd; a big stadium echo both feed. */
@@ -63,6 +69,9 @@ class SoccerAudio {
     this.crowdBus = ctx.createGain();
     this.crowdBus.gain.value = 1.1;
     this.crowdBus.connect(out);
+    this.crowdVoices = ctx.createGain();
+    this.crowdVoices.gain.value = 1;
+    this.crowdVoices.connect(this.crowdBus);
     // The stadium echo: a long, dark, spacious tail.
     const len = Math.floor(ctx.sampleRate * 2.8);
     const ir = ctx.createBuffer(2, len, ctx.sampleRate);
@@ -341,7 +350,57 @@ class SoccerAudio {
     this.applause(t + 0.6, 1.8, 0.1, 30);
   }
 
+  // ---------- the weather ----------
+
+  private weatherNodes: AudioNode[] = [];
+  private pendingWeather: string | null = null;
+
+  /** A steady bed for the weather: rain hissing on the stands, or wind gusting. Silent otherwise. */
+  weather(w: string) {
+    if (!this.ready()) { this.pendingWeather = w; return; }
+    this.pendingWeather = null;
+    for (const n of this.weatherNodes) { try { (n as AudioScheduledSourceNode).stop?.(); } catch { /* already stopped */ } n.disconnect(); }
+    this.weatherNodes = [];
+    const ctx = this.ctx!;
+    if (w !== 'rain' && w !== 'windy') return;
+    const src = ctx.createBufferSource();
+    src.buffer = w === 'rain' ? this.white : this.pink;
+    src.loop = true;
+    const g = ctx.createGain();
+    const nodes: AudioNode[] = [src, g];
+    if (w === 'rain') {
+      // A soft hiss, with a lower patter.
+      const hp = this.filter('highpass', 1800, 0.5), lp = this.filter('lowpass', 7000, 0.5);
+      g.gain.value = 0.035;
+      src.connect(hp).connect(lp).connect(g);
+      nodes.push(hp, lp);
+    } else {
+      // Wind: low rumble swelling and fading in gusts.
+      const lp = this.filter('lowpass', 420, 0.8);
+      g.gain.value = 0.11;
+      const gust = ctx.createOscillator(), depth = ctx.createGain();
+      gust.frequency.value = 0.13;
+      depth.gain.value = 0.08;
+      gust.connect(depth).connect(g.gain);
+      const sweep = ctx.createOscillator(), sd = ctx.createGain();
+      sweep.frequency.value = 0.09;
+      sd.gain.value = 180;
+      sweep.connect(sd).connect(lp.frequency);
+      gust.start(); sweep.start();
+      src.connect(lp).connect(g);
+      nodes.push(lp, gust, depth, sweep, sd);
+    }
+    g.connect(this.sfx);
+    src.start();
+    this.weatherNodes = nodes;
+  }
+
   // ---------- the animals ----------
+
+  /** Loudness of the calls being made (lower for each of a crowd's many voices). */
+  private callScale = 1;
+  /** Where the crowd's animal noises go (the crowd bus, in the stadium echo). */
+  private crowdVoices!: GainNode;
 
   /**
    * One animal call: a buzzy (or pure) tone bending through a pitch contour (points spread evenly
@@ -387,8 +446,9 @@ class SoccerAudio {
     const env = ctx.createGain();
     const a = Math.min(o.attack ?? 0.012, dur * 0.4);
     env.gain.setValueAtTime(0.0001, t);
-    env.gain.exponentialRampToValueAtTime(o.vol, t + a);
-    env.gain.setValueAtTime(o.vol, t + Math.max(a, dur * 0.65));
+    const vol = o.vol * this.callScale;
+    env.gain.exponentialRampToValueAtTime(vol, t + a);
+    env.gain.setValueAtTime(vol, t + Math.max(a, dur * 0.65));
     env.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     if (o.formants) {
       for (const fm of o.formants) {
@@ -413,9 +473,11 @@ class SoccerAudio {
   }
 
   /** A player's own noise, in a mood: happy (scored, saved), ouch (fouled), sad (let one in), card (the referee). */
-  voice(animal: string, mood: 'happy' | 'sad' | 'ouch' | 'card', x?: number) {
+  voice(animal: string, mood: 'happy' | 'sad' | 'ouch' | 'card', x?: number, crowd?: { at: number; vol: number }) {
     if (!this.ready()) return;
-    const t0 = this.now + 0.02, dest = this.place(x);
+    // From the stands (one call each, quieter, many of them), or a player on the pitch.
+    const t0 = crowd ? crowd.at : this.now + 0.02, dest = crowd ? this.crowdVoices : this.place(x);
+    this.callScale = crowd ? crowd.vol : 1;
     const happy = mood === 'happy', sad = mood === 'sad', ouch = mood === 'ouch';
     // Excited calls come higher and in bunches; sad ones lower, slower and alone.
     const up = (happy ? 1.1 : sad ? 0.8 : 1) * rnd(0.94, 1.06);
@@ -423,7 +485,7 @@ class SoccerAudio {
     const rep = (count: number, gap: number, fn: (at: number, i: number) => void) => {
       for (let i = 0; i < count; i++) fn(t0 + i * gap * rnd(0.92, 1.08), i);
     };
-    const n = happy ? 3 : 1;
+    const n = happy && !crowd ? 3 : 1;
     const P = (...fs: number[]) => fs.map((f) => f * up);
     switch (animal) {
       case 'duck':
@@ -454,19 +516,19 @@ class SoccerAudio {
           this.call({ t: t0 + 0.05, dest, dur: 0.3, vol: 0.3, pitch: P(900, 1300, 1000), formants: [{ f: [1200], q: 3 }, { f: [3000], q: 5, amp: 0.5 }] });
           break;
         }
-        rep(happy ? 2 : 1, 0.5, (at) => this.call({
+        rep(happy && !crowd ? 2 : 1, 0.5, (at) => this.call({
           t: at, dest, dur: (happy ? 0.42 : 0.55) * slow, vol: happy ? 0.26 : 0.32, pitch: sad ? P(480, 520, 300) : P(520, 780, 720, 480), attack: 0.03,
           formants: [{ f: [350, 850, 800, 450], q: 4 }, { f: [2600, 1500, 1200, 900], q: 6, amp: 0.7 }],
         }));
         break;
       case 'bunny':
-        rep(happy ? 3 : 1, 0.13, (at) => this.call({
+        rep(happy && !crowd ? 3 : 1, 0.13, (at) => this.call({
           t: at, dest, dur: ouch ? 0.18 : sad ? 0.3 : 0.09, vol: 0.3, wave: 'sine', lowpass: 6000, attack: 0.005,
           pitch: ouch ? P(1800, 2400, 1300) : sad ? P(1300, 1000) : P(1400, 1900, 1500),
         }));
         break;
       case 'mouse':
-        rep(happy ? 4 : 1, 0.09, (at) => this.call({
+        rep(happy && !crowd ? 4 : 1, 0.09, (at) => this.call({
           t: at, dest, dur: ouch ? 0.14 : sad ? 0.25 : 0.06, vol: 0.36, wave: 'triangle', lowpass: 8000, attack: 0.004,
           pitch: ouch ? P(3200, 4200, 2600) : sad ? P(2600, 2000) : P(2800, 3500, 3000),
         }));
@@ -479,7 +541,7 @@ class SoccerAudio {
         });
         break;
       case 'raccoon':
-        rep(happy ? 2 : 1, 0.45, (at) => this.call({
+        rep(happy && !crowd ? 2 : 1, 0.45, (at) => this.call({
           t: at, dest, dur: ouch ? 0.25 : sad ? 0.5 : 0.35, vol: sad ? 0.45 : ouch ? 0.27 : 0.21, wave: 'square', flutter: [sad ? 14 : 28, 1],
           pitch: ouch ? P(1500, 2200, 1400) : sad ? P(1000, 780) : P(1300, 1100),
           formants: [{ f: [1600], q: 3 }, { f: [3000], q: 5, amp: 0.4 }],
@@ -567,7 +629,6 @@ class SoccerAudio {
       this.bedGain.gain.setTargetAtTime(1, t, 0.1);
       this.horn(t + 0.2);
       this.applause(t + 1.5, 3.5, 0.16, 60);
-      this.chantT = 4;
     } else {
       this.shout({ t, vowel: 'aw', to: 'oo', voices: 18, pitch: [120, 260], glide: 0.7, attack: 0.2, hold: 0.8, release: 1.4, vol: 0.5 });
       this.shout({ t: t + 0.1, vowel: 'ee', to: 'aa', voices: 8, pitch: [200, 360], glide: 1.1, attack: 0.15, hold: 1.2, release: 1.2, vol: 0.18 });
@@ -613,8 +674,8 @@ class SoccerAudio {
   }
 
   /** A chant: clap-clap, clap-clap-clap, and everyone singing "oh-oh-oh". Twice. */
-  private chant() {
-    const t0 = this.now + 0.1, beat = 0.42;
+  private chant(t0 = this.now + 0.1) {
+    const beat = 0.42;
     const melody: [number, number, number][] = [[0, 0.8, 392], [1, 0.4, 392], [1.5, 0.4, 440], [2, 1.2, 392]];
     for (let rep = 0; rep < 2; rep++) {
       const t = t0 + rep * beat * 8;
@@ -631,6 +692,7 @@ class SoccerAudio {
    */
   crowd(dt: number, excitement: number, hush = false) {
     if (!this.ready()) return;
+    if (this.pendingWeather) this.weather(this.pendingWeather);
     const t = this.now;
     this.excitement += (excitement - this.excitement) * Math.min(1, dt * 2);
     this.hush += ((hush ? 1 : 0) - this.hush) * Math.min(1, dt * 3);
@@ -646,9 +708,62 @@ class SoccerAudio {
     // A chant when things are calm.
     this.chantT -= dt;
     if (this.chantT <= 0) {
-      if (e < 0.45 && !hush) this.chant();
       this.chantT = rnd(28, 45);
+      if (e < 0.45 && !hush) {
+        if (this.teams) this.chantFor(!!this.teams.away && Math.random() < 0.35);
+        else this.chant();
+      }
     }
+  }
+
+  // ---------- the fans' songs ----------
+
+  private teams: { home: Chanter; away: Chanter | null } | null = null;
+  /** Told when an end starts singing (so the stadium can make them bounce): which end, how long, when, the beat. */
+  onChant: ((away: boolean, secs: number, delay: number, beat: number) => void) | null = null;
+
+  /** Who's in the ground: the home fans, and the away end (none in training). */
+  setTeams(home: Chanter, away: Chanter | null) {
+    this.teams = { home, away };
+    this.chantT = rnd(12, 20);
+  }
+
+  /** One end sings: their team's name with claps, a chorus of their animal noise, or the old clap-along. */
+  chantFor(away: boolean, delay = 0) {
+    const fans = away ? this.teams?.away : this.teams?.home;
+    if (!this.ready() || !fans) return;
+    this.chantT = rnd(28, 45);
+    const t0 = this.now + delay, beat = 0.45;
+    const r = Math.random();
+    let secs: number;
+    if (r < 0.5 && fans.chant) secs = this.nameChant(t0, beat, fans.chant);
+    else if (r < 0.88) secs = this.animalChorus(t0, beat, fans.animal);
+    else { this.chant(t0); secs = 6.7; }
+    this.onChant?.(away, secs, delay, beat);
+  }
+
+  /** "BUN-NIES! (clap clap clap)" three times. */
+  private nameChant(t0: number, beat: number, [v1, v2]: [Vowel, Vowel]) {
+    for (let bar = 0; bar < 3; bar++) {
+      const t = t0 + bar * beat * 4;
+      this.shout({ t, vowel: v1, voices: 16, pitch: [210, 330], attack: 0.04, hold: 0.16, release: 0.14, vol: 0.5 });
+      this.shout({ t: t + beat, vowel: v2, voices: 16, pitch: [170, 270], glide: 0.86, attack: 0.04, hold: 0.32, release: 0.28, vol: 0.5 });
+      for (const b of [2, 2.5, 3]) this.applause(t + b * beat, 0.05, 0.14, 900);
+    }
+    return beat * 12;
+  }
+
+  /** A whole end making their animal noise in time: QUACK! QUACK! QUACK! (clap) */
+  private animalChorus(t0: number, beat: number, animal: string) {
+    const beats = animal === 'bear' ? [0, 2] : [0, 1, 2];
+    for (let bar = 0; bar < 3; bar++) {
+      const t = t0 + bar * beat * 4;
+      for (const b of beats) {
+        for (let v = 0; v < 7; v++) this.voice(animal, 'card', undefined, { at: t + b * beat + rnd(-0.03, 0.04), vol: 0.15 });
+      }
+      this.applause(t + 3 * beat, 0.05, 0.14, 900);
+    }
+    return beat * 12;
   }
 
   private babble(t: number, level: number) {

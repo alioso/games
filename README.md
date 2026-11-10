@@ -197,6 +197,24 @@ Every animal has its own voice (quacks, oinks, woofs, meows, squeaks, roars, chi
 as the card comes out): happy calls when they score or make a big save, a cry when fouled, a sad one when they
 let a goal in. Sounds are panned to where they happen on screen.
 
+**Where you play**: each match is at one of the two teams' grounds (The Burrow, The Mud Bowl, Kennel Park,
+Scratching Post Stadium, The Pond, The Tip, The Honey Pot, Cheddar Park), each with its own seat and roof colours,
+size, name sign and pitch (stripes, checks, diagonals, rings; the Mud Bowl is churned up, the Tip is worn bare).
+The home fans fill most of it as their own animal, and the visitors have the end on the right. It's an afternoon, a
+sunset or a night game under the lights, in sun, cloud, rain, wind or snow, and the weather changes play a
+little:
+- **Rain**: the ball skids on, and passes run a bit long.
+- **Snow**: the ball holds up, and passes come up short.
+- **Wind**: the ball drifts in the air.
+- There are rain, snow and leaves in the air, and the rain and wind can be heard.
+
+**Chants**: now and then one end sings, bouncing in time: their team's name with claps ("Bun-nies!"
+clap clap clap), or the whole end quacking, oinking, woofing or roaring together. After a goal the scorers' fans
+start up.
+
+**Replays**: after each goal's celebration, the build-up plays again in slow motion, from behind the goal or low
+on the touchline, with the ball sounds. Any button skips it.
+
 **The animals** blink, and their faces show how they feel: a grin when celebrating (the duck's beak drops
 open), a frown and heavy eyes after letting one in, eyes screwed shut when hurt, gritted teeth in a hard kick or
 tackle. Ears bounce with each step and sweep back at a sprint (the dog's flap, the bunny's stream behind),
@@ -242,7 +260,7 @@ node tools/soccer.mjs 40 4            # Animal Soccer (dev:soccer running): titl
 node tools/soccer-controls.mjs        # plays with the keyboard: kick-off pass, dribbling, held shots, a tackle
 node tools/soccer-shots.mjs 24        # 24 shots per difficulty against the keeper: goals / saves / misses
 node tools/soccer-shots.mjs 24 them   # the same, but the computer shoots (its way) at your keeper
-node tools/soccer-flow.mjs 25         # how a computer-vs-computer match flows: passes (completed / intercepted), possession, tackles, shots
+node tools/soccer-flow.mjs 25 medium rain  # how a computer-vs-computer match flows (passes completed / intercepted, possession, tackles, shots); weather optional
 node tools/soccer-curl.mjs            # how much curled passes, crosses and shots bend, and that they still land on target
 node tools/soccer-sounds.mjs          # records every sound in turn to tools/shots/soccer/sounds.wav (+ sounds.txt: what's when)
 node tools/soccer-setpieces.mjs       # stages a free kick, a penalty each way (you shoot / you dive), an offside and a sending-off; screenshots
@@ -251,11 +269,13 @@ node tools/soccer-poses.mjs           # freezes one player through a run and a k
 node tools/soccer-celebrations.mjs [--close] [kind ...]  # forces a goal per celebration, frames of each (celeb-<kind>-*.png)
 node tools/soccer-celeb-poses.mjs     # the celebration poses frozen side-on (tools/shots/soccer/celeb-poses.png)
 node tools/soccer-faces.mjs           # every animal's face: calm, happy, sad, ouch, effort, running (faces.png)
+node tools/soccer-grounds.mjs         # every ground at a different time and weather (grounds.png)
+node tools/soccer-replay.mjs [goals]  # forces goals and takes frames of the replays (replay-*.png)
 node tools/soccer-closeup.mjs         # zoomed-in burst of frames while the computer plays, plus the goal
 node tools/soccer-sheet.mjs           # picture of all eight teams (tools/shots/soccer/teams.png)
 ```
 
-In Animal Soccer's console, `soccer.start('duck', 'pig', 5, 'hard')` starts a match, `soccer.auto()` lets the computer
+In Animal Soccer's console, `soccer.start('duck', 'pig', 5, 'hard')` starts a match (a sunny afternoon at the duck's ground; add `, false, 'night', 'snow'` for other conditions), `soccer.auto()` lets the computer
 play your side, `soccer.speed(8)` fast-forwards (`0` freezes it), `soccer.camera([x, y, z, lookX, lookY, lookZ])` pins the camera
 (`null` to let go), and `soccer.match` is the live match, and `soccer.sfx` plays any sound (`soccer.sfx.goal(true)`, `soccer.sfx.whistle(3)`).
 

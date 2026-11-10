@@ -88,3 +88,11 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #2a5a2a; fon
 .fade { position: absolute; inset: 0; background: #000; opacity: 0; transition: opacity 0.25s; }
 .fade.on { opacity: 1; }
 .padstatus { position: absolute; bottom: 12px; right: 16px; font-size: 14px; background: rgba(255, 255, 255, 0.85); border: 2px solid var(--ink); border-radius: 8px; padding: 3px 10px; }
+
+/* Goal replays: a tag in the corner. */
+.replaytag { position: absolute; top: 18px; right: 22px; font-family: Bungee, sans-serif; font-size: 30px; color: #fff;
+  background: #e8402c; padding: 4px 16px 6px; border-radius: 10px; border: 3px solid #15110f; box-shadow: 0 4px 0 #15110f;
+  opacity: 0; transform: translateY(-8px); transition: opacity 0.2s, transform 0.2s; pointer-events: none; text-align: center; }
+.replaytag small { display: block; font-family: Fredoka, sans-serif; font-size: 13px; font-weight: 600; letter-spacing: 0.02em; }
+.replaytag.on { opacity: 1; transform: none; animation: replayblink 1.2s ease-in-out infinite; }
+@keyframes replayblink { 50% { filter: brightness(1.25); } }

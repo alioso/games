@@ -1,16 +1,16 @@
 // How a match flows (the computer playing both sides): passes and where they end up (the intended
 // teammate, another teammate, intercepted, nobody), tackles, shots, goals, and how long the ball is
-// at someone's feet. Usage: node tools/soccer-flow.mjs [seconds=20] [level=medium]
+// at someone's feet. Usage: node tools/soccer-flow.mjs [seconds=20] [level=medium] [weather=sunny]
 import { chromium } from 'playwright';
-const secs = Number(process.argv[2] ?? 20), level = process.argv[3] ?? 'medium';
+const secs = Number(process.argv[2] ?? 20), level = process.argv[3] ?? 'medium', weather = process.argv[4] ?? 'sunny';
 const browser = await chromium.launch({ channel: 'chrome' });
 const page = await browser.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
 await page.goto('http://localhost:5175/');
 await page.waitForTimeout(1500);
-console.log(await page.evaluate(async ([secs, level]) => {
-  window.soccer.start('duck', 'pig', 20, level); window.soccer.auto(true); window.soccer.speed(4);
+console.log(await page.evaluate(async ([secs, level, weather]) => {
+  window.soccer.start('duck', 'pig', 20, level, false, 'day', weather); window.soccer.auto(true); window.soccer.speed(4);
   const m = window.soccer.match, b = m.ball;
   const res = { target: 0, mate: 0, intercepted: 0, nobody: 0 }, ev = {};
   let pending = null, owner = null, owned = 0, samples = 0, seen = -1;
@@ -36,6 +36,6 @@ console.log(await page.evaluate(async ([secs, level]) => {
     `ball at someone's feet ${Math.round((owned / samples) * 100)}% of the time`,
     `events ${JSON.stringify(ev)}`,
   ].join('\n');
-}, [secs, level]));
+}, [secs, level, weather]));
 console.log(errors.length ? errors.join('\n') : 'no page errors');
 await browser.close();

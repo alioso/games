@@ -13,9 +13,14 @@ export interface Kit {
   number: number;
 }
 
+/** Vowel sounds a crowd can sing. */
+export type ChantVowel = 'oo' | 'oh' | 'aw' | 'aa' | 'eh' | 'ee';
+
 export interface Team {
   id: Animal;
   name: string;
+  /** What the fans sing (two syllables, by their vowels): "Bun-nies!", "Mud-bath!"... */
+  chant?: [ChantVowel, ChantVowel];
   /** Three letters for the scoreboard. */
   short: string;
   /** Fur, and the lighter fur (muzzle, belly, inner ears). */
@@ -34,42 +39,42 @@ export const REFEREE: Team = { id: 'owl', name: 'Referee', short: 'REF', fur: 0x
 
 export const TEAMS: Team[] = [
   {
-    id: 'bunny', name: 'Baby Bunnies', short: 'BUN', fur: 0xf2ece4, fur2: 0xf6b8c8,
+    id: 'bunny', name: 'Baby Bunnies', short: 'BUN', chant: ['aw', 'ee'], fur: 0xf2ece4, fur2: 0xf6b8c8,
     home: kit(0x7cc4f0, 0xffffff, 0xffffff, 0x7cc4f0, 0xffffff), away: kit(0xf08cb4, 0xffffff, 0xf08cb4, 0xffffff, 0xffffff),
     keeper: kit(0x3a3a48, 0xf0d040, 0x3a3a48, 0x3a3a48, 0xf0d040),
   },
   {
-    id: 'pig', name: 'Mudbath United', short: 'MUD', fur: 0xf4a8b0, fur2: 0xe07888,
+    id: 'pig', name: 'Mudbath United', short: 'MUD', chant: ['aw', 'aa'], fur: 0xf4a8b0, fur2: 0xe07888,
     home: kit(0x2e8a4e, 0xffffff, 0xffffff, 0x2e8a4e, 0xffffff), away: kit(0xf4f0e6, 0x2e8a4e, 0x2e8a4e, 0xf4f0e6, 0x2e8a4e),
     keeper: kit(0xf0a020, 0x222222, 0x222222, 0xf0a020, 0x222222),
   },
   {
-    id: 'dog', name: 'Woof Wanderers', short: 'WOF', fur: 0xc8884a, fur2: 0xf0dcc0,
+    id: 'dog', name: 'Woof Wanderers', short: 'WOF', chant: ['oo', 'oo'], fur: 0xc8884a, fur2: 0xf0dcc0,
     home: kit(0xd8302c, 0xffffff, 0xffffff, 0xd8302c, 0xffffff), away: kit(0x1e2a5a, 0xf0c040, 0x1e2a5a, 0x1e2a5a, 0xf0c040),
     keeper: kit(0x40c060, 0x111111, 0x111111, 0x40c060, 0x111111),
   },
   {
-    id: 'cat', name: 'Whisker City', short: 'WHI', fur: 0xf09040, fur2: 0xfbe8d0,
+    id: 'cat', name: 'Whisker City', short: 'WHI', chant: ['ee', 'eh'], fur: 0xf09040, fur2: 0xfbe8d0,
     home: kit(0xf4d030, 0x1a1a1a, 0x1a1a1a, 0xf4d030, 0x1a1a1a), away: kit(0x7a3cb4, 0xffffff, 0x7a3cb4, 0x7a3cb4, 0xffffff),
     keeper: kit(0x30b0d0, 0x111111, 0x111111, 0x30b0d0, 0x111111),
   },
   {
-    id: 'duck', name: 'Puddle Rovers', short: 'PUD', fur: 0xfaf6ea, fur2: 0xf0a020,
+    id: 'duck', name: 'Puddle Rovers', short: 'PUD', chant: ['oh', 'eh'], fur: 0xfaf6ea, fur2: 0xf0a020,
     home: kit(0x2a5ad8, 0xffffff, 0xffffff, 0x2a5ad8, 0xffffff), away: kit(0xf07c1c, 0x1a1a1a, 0x1a1a1a, 0xf07c1c, 0x1a1a1a),
     keeper: kit(0xc8e040, 0x1a1a1a, 0x1a1a1a, 0xc8e040, 0x1a1a1a),
   },
   {
-    id: 'raccoon', name: 'Dustbin Athletic', short: 'BIN', fur: 0x8a8a90, fur2: 0xe8e4dc,
+    id: 'raccoon', name: 'Dustbin Athletic', short: 'BIN', chant: ['aw', 'ee'], fur: 0x8a8a90, fur2: 0xe8e4dc,
     home: kit(0x5a2a8a, 0xa8e040, 0x1a1a1a, 0x5a2a8a, 0xa8e040), away: kit(0xa8e040, 0x1a1a1a, 0xa8e040, 0x1a1a1a, 0x1a1a1a),
     keeper: kit(0xe85030, 0x111111, 0x111111, 0xe85030, 0x111111),
   },
   {
-    id: 'bear', name: 'Honeypot Grizzlies', short: 'HNY', fur: 0x8a5a34, fur2: 0xd8b088,
+    id: 'bear', name: 'Honeypot Grizzlies', short: 'HNY', chant: ['ee', 'ee'], fur: 0x8a5a34, fur2: 0xd8b088,
     home: kit(0xf08a1a, 0x1a1a1a, 0x1a1a1a, 0xf08a1a, 0x1a1a1a), away: kit(0x1a9a9a, 0xffffff, 0xffffff, 0x1a9a9a, 0xffffff),
     keeper: kit(0x9a40c0, 0xffffff, 0xffffff, 0x9a40c0, 0xffffff),
   },
   {
-    id: 'mouse', name: 'Cheddar Town', short: 'CHZ', fur: 0xa8988c, fur2: 0xf4b8b8,
+    id: 'mouse', name: 'Cheddar Town', short: 'CHZ', chant: ['eh', 'aa'], fur: 0xa8988c, fur2: 0xf4b8b8,
     home: kit(0xf6e05a, 0xd02a2a, 0xd02a2a, 0xf6e05a, 0xd02a2a), away: kit(0xd02a2a, 0xf6e05a, 0xd02a2a, 0xd02a2a, 0xf6e05a),
     keeper: kit(0x2a2a2a, 0x40c060, 0x2a2a2a, 0x2a2a2a, 0x40c060),
   },

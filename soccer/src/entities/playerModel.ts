@@ -36,6 +36,9 @@ export interface PoseInput {
 
 export type KickStyle = 'pass' | 'shot' | 'lob';
 export type Mood = 'happy' | 'sad' | 'ouch' | 'effort';
+const MOODS: (Mood | undefined)[] = ['happy', 'sad', 'ouch', 'effort'];
+/** Snapshot header size (position, yaw, mood, speed, run phase, visible), then the joints. */
+const SNAP = 8;
 
 const darker = (c: number, k: number) => new THREE.Color(c).multiplyScalar(k).getHex();
 
@@ -406,6 +409,8 @@ export class PlayerRig {
   private twitchIn = 2 + Math.random() * 4;
   private twitchT = 1;
   private twitchSide = 1;
+  /** The last pose asked for (replays record it). */
+  private lastIn: PoseInput | null = null;
   /** Smoothed expression amounts. */
   private ex = { happy: 0, sad: 0, ouch: 0, effort: 0 };
 
@@ -515,6 +520,7 @@ export class PlayerRig {
 
   /** Pose the joints (smoothly: they ease toward where the pose wants them). */
   animate(p: PoseInput, dt: number) {
+    this.lastIn = p;
     const tg = {
       bodyY: 0.33, bodyX: 0, bodyZ: 0, torsoX: 0, torsoY: 0, headX: 0, headY: p.look ?? 0,
       armLX: 0, armLZ: 0.12, armRX: 0, armRZ: -0.12, legLX: 0, legLZ: 0, legRX: 0, legRZ: 0,
@@ -852,6 +858,35 @@ export class PlayerRig {
       else o.rotation[a] = this.targets[i];
     });
     this.animateFace(p, dt);
+  }
+
+  /** Replays: the whole pose as numbers (where, which way, every joint, the feeling). */
+  snapshot() {
+    const a = new Float32Array(SNAP + this.targets.length);
+    const r = this.root, li = this.lastIn;
+    a[0] = r.position.x; a[1] = r.position.y; a[2] = r.position.z; a[3] = r.rotation.y;
+    a[4] = MOODS.indexOf(li?.mood); a[5] = li?.speed ?? 0; a[6] = li?.phase ?? 0;
+    a[7] = r.visible ? 1 : 0;
+    this.targets.forEach((v, i) => (a[SNAP + i] = v));
+    return a;
+  }
+
+  /** Show a recorded pose, part way (k) from one snapshot to the next. */
+  restore(a: Float32Array, b: Float32Array, k: number, dt: number) {
+    const lerp = (i: number) => a[i] + (b[i] - a[i]) * k;
+    const turn = (i: number) => {
+      const d = b[i] - a[i];
+      return a[i] + Math.atan2(Math.sin(d), Math.cos(d)) * k;
+    };
+    this.root.position.set(lerp(0), lerp(1), lerp(2));
+    this.root.rotation.y = turn(3);
+    this.root.visible = a[7] > 0;
+    this.channels.forEach(([o, ax, kind], i) => {
+      const v = kind === 'pos' ? lerp(SNAP + i) : turn(SNAP + i);
+      this.targets[i] = v;
+      if (kind === 'pos') o.position[ax] = v; else o.rotation[ax] = v;
+    });
+    this.animateFace({ pose: 'idle', t: 0, speed: lerp(5), phase: lerp(6), mood: MOODS[a[4]] }, dt);
   }
 
   /** Blinks, expressions, bouncing ears, wagging tails. */

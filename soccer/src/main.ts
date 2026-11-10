@@ -6,12 +6,14 @@ import { GameLoop } from '@engine/loop';
 import { Renderer, toggleFullscreen } from '@engine/renderer';
 import { connectedGamepads } from '@engine/input';
 import { Thumbnailer } from '@engine/thumbnails';
-import { AI_LEVELS, CAMERA, type Difficulty, HALF_LENGTHS, PITCH } from './data/tuning';
-import { TEAMS, type Team } from './data/teams';
+import { AI_LEVELS, CAMERA, CONDITIONS, type Difficulty, HALF_LENGTHS, PITCH } from './data/tuning';
+import { TEAMS, type Team, kitsFor } from './data/teams';
+import { GROUNDS, TIME_NAMES, type TimeOfDay, type Weather, drawConditions, conditionsFor, weatherName } from './data/grounds';
 import { PlayerRig } from './entities/playerModel';
 import { Match, type MatchEvent, type MatchOptions } from './game/match';
 import { CONTROL_HELP, Controller, NO_INPUT } from './game/controls';
 import { SFX, initSounds } from './game/sounds';
+import { Replay } from './game/replay';
 import { Stadium } from './world/stadium';
 import { InkEffect } from './world/inkEffect';
 import { Hud } from './ui/hud';
@@ -29,14 +31,45 @@ renderer.camera.far = 500;
 renderer.camera.updateProjectionMatrix();
 initSounds();
 
-const stadium = new Stadium();
+let stadium = new Stadium();
+/** Whether this match is at your team's ground (side 0's) or theirs. */
+let hostIsYou = true;
 renderer.scene.add(stadium.group);
+
+/** Build the home team's ground for a match, at a time of day and in some weather. */
+function buildStadium(opts: MatchOptions) {
+  const { time, weather } = opts.time && opts.weather ? { time: opts.time, weather: opts.weather } : drawConditions();
+  const [hk, ak] = kitsFor(opts.home, opts.away);
+  const fans = (t: Team, k: typeof hk) => ({ animal: t.id, fur: t.fur, colors: [k.shirt, k.shirt, k.trim, k.shorts] });
+  // Played at either team's ground (training: yours). Their fans fill it; the visitors get an end.
+  hostIsYou = opts.training || (opts.venue ? opts.venue === 'home' : Math.random() < 0.5);
+  const [host, hostKit, guest, guestKit] = hostIsYou ? [opts.home, hk, opts.away, ak] : [opts.away, ak, opts.home, hk];
+  stadium.dispose();
+  stadium = new Stadium({
+    ground: GROUNDS[host.id as keyof typeof GROUNDS],
+    time, weather,
+    home: fans(host, hostKit),
+    away: opts.training ? null : fans(guest, guestKit),
+  });
+  renderer.scene.add(stadium.group);
+  renderer.scene.fog = stadium.fog;
+  Object.assign(CONDITIONS, conditionsFor(weather));
+  SFX.weather(weather);
+  // Who's singing in the stands.
+  SFX.setTeams({ animal: host.id, chant: host.chant }, opts.training ? null : { animal: guest.id, chant: guest.chant });
+  SFX.onChant = (away, secs, delay, beat) => stadium.chant(away, secs, delay, beat);
+  return { time, weather };
+}
 const hud = new Hud(ui);
 const menu = new Menu(ui);
 const controller = new Controller();
 const fade = document.createElement('div');
 fade.className = 'fade';
 ui.appendChild(fade);
+const replayTag = document.createElement('div');
+replayTag.className = 'replaytag';
+replayTag.innerHTML = 'REPLAY<small>press any button to skip</small>';
+ui.appendChild(replayTag);
 const padStatus = document.createElement('div');
 padStatus.className = 'padstatus';
 ui.appendChild(padStatus);
@@ -48,6 +81,11 @@ let paused = false;
 let simSpeed = 1;
 let fullTimeAt = 0;
 let lastSetup: MatchOptions | null = null;
+/** Goal replays: recorded as we go, played after the celebration. */
+const replay = new Replay();
+let replayCount = 0;
+/** Fading out at the end of a replay (real time it finishes). */
+let replayOutAt = 0;
 
 // ---------- team pictures ----------
 
@@ -65,16 +103,24 @@ function teamPic(team: Team) {
 
 function startMatch(opts: MatchOptions, demo = false) {
   match?.dispose();
+  const where = buildStadium(opts);
   match = new Match(opts);
   match.autopilot = demo;
+  match.replays = !demo;
   attract = demo;
+  replay.stop();
+  replayOutAt = 0;
   renderer.scene.add(match.group);
   paused = false;
   fullTimeAt = 0;
   hud.show(!demo);
   hud.hideBanner();
   controller.reset();
-  if (!demo) lastSetup = opts;
+  if (!demo) {
+    lastSetup = { ...opts, time: undefined, weather: undefined, venue: undefined };
+    // Where we are, and what it's like.
+    hud.showBanner(stadium.look.ground.name.toUpperCase(), `${TIME_NAMES[where.time]} · ${weatherName(where.time, where.weather)}`, 2.6);
+  }
   camX = 0;
 }
 
@@ -253,21 +299,36 @@ function hintFor(m: Match) {
 /** Where the ball is (sounds are placed there). */
 const bx = () => match?.ball.pos.x ?? 0;
 
+/** Ball sounds are noted for the replay too. */
+function again(play: () => void) {
+  play();
+  if (match) replay.sound(match.time, play);
+}
+
 function onEvent(e: MatchEvent) {
   if (attract && (e.kind === 'banner' || e.kind === 'whistle' || e.kind === 'fulltime' || e.kind === 'halftime')) return;
+  const x = bx();
   switch (e.kind) {
+    case 'replay':
+      if (replay.start(e.from, e.to, e.end)) { replayCount++; hud.hideBanner(); }
+      else match?.replayDone();
+      break;
     case 'whistle': SFX.whistle(e.long); break;
     case 'kick':
-      SFX.kick(e.power, bx(), e.header);
+      again(() => SFX.kick(e.power, x, e.header));
       // A hard strike gives the camera a little jolt.
       if (!attract && e.power > 12) shake = Math.max(shake, (e.power - 12) / 7);
       break;
-    case 'touch': SFX.touch(bx()); break;
-    case 'bounce': SFX.bounce(e.speed, bx()); break;
-    case 'post': SFX.post(bx()); break;
-    case 'net': SFX.net(e.speed, bx()); stadium.shakeNet(e.end, e.speed); break;
-    case 'goal': SFX.goal(e.side.index === 0); break;
-    case 'save': SFX.save(e.catch, bx()); break;
+    case 'touch': again(() => SFX.touch(x)); break;
+    case 'bounce': again(() => SFX.bounce(e.speed, x)); break;
+    case 'post': again(() => SFX.post(x)); break;
+    case 'net': again(() => { SFX.net(e.speed, x); stadium.shakeNet(e.end, e.speed); }); break;
+    case 'save': again(() => SFX.save(e.catch, x)); break;
+    case 'goal':
+      SFX.goal(e.side.index === 0);
+      // The scorers' fans burst into song (the home team is side 0; the away end is theirs).
+      if (!attract) SFX.chantFor((e.side.index === 0) !== hostIsYou, 3.2);
+      break;
     case 'tackle': SFX.tackle(e.won, bx()); break;
     case 'miss': SFX.miss(); break;
     case 'foul': SFX.foul(e.penalty); break;
@@ -283,10 +344,13 @@ function onEvent(e: MatchEvent) {
 // ---------- camera ----------
 
 let camX = 0, camZ = 0, zoom = 0, shake = 0, penBlend = 0;
+/** Where the ball is in the replay being shown (null: no replay). */
+let replayBall: THREE.Vector3 | null = null;
 const penFrom = new THREE.Vector3(), penAt = new THREE.Vector3();
 /** For tools: put the camera somewhere fixed ([x, y, z, lookX, lookY, lookZ]). */
 let camOverride: number[] | null = null;
 const look = new THREE.Vector3();
+const replayLook = new THREE.Vector3(), replayPos = new THREE.Vector3();
 function updateCamera(dt: number) {
   const cam = renderer.camera;
   if (camOverride) {
@@ -295,6 +359,21 @@ function updateCamera(dt: number) {
     cam.lookAt(lx, ly, lz);
     return;
   }
+  if (replayBall) {
+    // Replays: from behind the goal (or low on the touchline, every other goal), following the ball.
+    const b = replayBall, end = replay.end;
+    const want = replayCount % 2
+      ? new THREE.Vector3(end * (L + 6.5), 3.6, Math.max(-6, Math.min(6, b.z * 0.6)))
+      : new THREE.Vector3(Math.max(-L + 4, Math.min(L - 4, b.x - end * 5)), 1.9, W + 3.2);
+    const k = 1 - Math.exp(-dt * 3);
+    if (replayPos.lengthSq() === 0) { replayPos.copy(want); replayLook.copy(b); }
+    replayPos.lerp(want, k);
+    replayLook.lerp(new THREE.Vector3(b.x, Math.min(b.y, 1.2) * 0.6 + 0.3, b.z), 1 - Math.exp(-dt * 6));
+    cam.position.copy(replayPos);
+    cam.lookAt(replayLook);
+    return;
+  }
+  replayPos.set(0, 0, 0);
   const f = match ? match.focus() : { x: 0, z: 0, zoom: 0 };
   const k = (rate: number) => 1 - Math.exp(-dt * rate);
   camX += (Math.max(-L + 7, Math.min(L - 7, f.x)) - camX) * k(2.6);
@@ -337,6 +416,8 @@ const loop = new GameLoop(
     if (!match) return;
     if (!attract && !menu.open && input.b.pause.pressed) { pauseMenu(); return; }
     if (paused) return;
+    // Any button skips a replay.
+    if (replay.playing && !attract && !replayOutAt && Object.values(input.b).some((s) => s.pressed)) replayOutAt = now + 0.3;
     for (let i = 0; i < simSpeed; i++) {
       match.update(dt, attract ? NO_INPUT : input);
       for (const e of match.events) onEvent(e);
@@ -345,8 +426,24 @@ const loop = new GameLoop(
     if (fullTimeAt && now > fullTimeAt && !menu.open) { fullTimeAt = 0; fullTimeMenu(); }
   },
   (frameDt) => {
-    if (match) {
+    replayBall = null;
+    if (match && replay.playing) {
+      // Playing back a goal: pose everything from the recording; fade out at the end.
+      const now = performance.now() / 1000;
+      replayBall = replay.update(paused ? 0 : frameDt, match.ball);
+      if (replay.left < 0.3 && !replayOutAt && !paused) replayOutAt = now + 0.3;
+      if (replayOutAt && now > replayOutAt) {
+        replayOutAt = 0;
+        replay.stop();
+        replayBall = null;
+        match.replayDone();
+      }
+    } else if (match) {
       match.render(frameDt);
+      if (!attract) replay.capture(match.time, match.rigs(), match.ball);
+    }
+    replayTag.classList.toggle('on', !!replayBall);
+    if (match) {
       const a = match.sides[0], b = match.sides[1];
       hud.setScore(a.team, a.kit, a.score, match.training ? null : b.team, match.training ? null : b.kit, b.score, match.training ? null : match.minute, match.cardsFor(a), match.cardsFor(b));
       // Power bar over your player's head.
@@ -356,9 +453,9 @@ const loop = new GameLoop(
         hud.setPower(match.charge.power, (proj.x * 0.5 + 0.5) * innerWidth, (-proj.y * 0.5 + 0.5) * innerHeight);
       } else hud.setPower(null);
       hud.setHint(attract ? '' : hintFor(match));
-      stadium.update(frameDt, match.excitement());
+      stadium.update(frameDt, match.excitement(), renderer.camera.position.x);
       if (!paused) SFX.crowd(frameDt, match.excitement(), !!match.penalty && !match.penalty.kickedAt);
-      fade.classList.toggle('on', (match.phase === 'goal' && match.phaseT > 4.7) || (match.phase === 'halftime' && match.phaseT > 3.2));
+      fade.classList.toggle('on', (match.phase === 'goal' && match.phaseT > 5.7) || (match.phase === 'halftime' && match.phaseT > 3.2) || !!replayOutAt);
     }
     hud.update(frameDt);
     updateCamera(frameDt);
@@ -384,12 +481,13 @@ window.soccer = {
   /** The sounds (tools: soccer.sfx.kick(15), soccer.sfx.goal(true)...). */
   sfx: SFX,
   get menu() { return menu; },
-  start(home = 'duck', away = 'pig', half = 5, difficulty: Difficulty = 'medium', training = false) {
+  /** Start a match (tools: sunny afternoon unless a time and weather are given). */
+  start(home = 'duck', away = 'pig', half = 5, difficulty: Difficulty = 'medium', training = false, time: TimeOfDay = 'day', weather: Weather = 'sunny') {
     menu.hide();
-    startMatch({ home: TEAMS.find((t) => t.id === home)!, away: TEAMS.find((t) => t.id === away)!, half, difficulty, training });
+    startMatch({ home: TEAMS.find((t) => t.id === home)!, away: TEAMS.find((t) => t.id === away)!, half, difficulty, training, time, weather, venue: 'home' });
   },
   /** Your side plays itself. */
-  auto(on = true) { if (match) match.autopilot = on; },
+  auto(on = true) { if (match) { match.autopilot = on; match.replays = !on; } },
   /** Run the simulation n times faster. */
   speed(n: number) { simSpeed = Math.max(0, Math.floor(n)); },
   camera(at: number[] | null) { camOverride = at; },

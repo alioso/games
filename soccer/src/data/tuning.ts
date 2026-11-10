@@ -127,3 +127,9 @@ export function teammateLevel(d: Difficulty): AiLevel {
 
 /** Minutes per half you can pick. */
 export const HALF_LENGTHS = [5, 10, 20];
+
+/**
+ * The weather's (small) effect on the ball for the match being played: rolling friction and bounce
+ * multipliers, extra skid off a bounce, and wind pushing a ball in the air (m/s²). Set at kick-off.
+ */
+export const CONDITIONS = { roll: 1, bounce: 1, grip: 1, windX: 0, windZ: 0 };

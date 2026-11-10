@@ -1,7 +1,7 @@
 // Ball velocities for each kind of kick: rolled passes that arrive at a teammate's feet, lofted
 // balls that land on a spot, shots at a point in the goal (with optional curl).
 import * as THREE from 'three';
-import { BALL } from '../data/tuning';
+import { BALL, CONDITIONS } from '../data/tuning';
 import { flight } from './ball';
 
 const R = BALL.radius;
@@ -9,7 +9,9 @@ const G = BALL.gravity;
 
 /** Launch speed for a rolled ball to cover `d` metres and still be doing `arrive` m/s. */
 export function rollSpeed(d: number, arrive: number) {
-  return Math.sqrt(arrive * arrive + 2 * BALL.roll * d) * (1 + d * 0.004);
+  // Players half-allow for the pitch: a wet one runs a bit long, a snowy one a bit short.
+  const roll = BALL.roll * (1 + (CONDITIONS.roll - 1) * 0.5);
+  return Math.sqrt(arrive * arrive + 2 * roll * d) * (1 + d * 0.004);
 }
 
 /** A ball rolled along the grass toward (toX, toZ) at `speed`. */
