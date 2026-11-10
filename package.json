@@ -9,7 +9,9 @@
     "typecheck": "tsc --noEmit",
     "shot": "node tools/screenshot.mjs",
     "dev:floor": "vite floorstep --host",
-    "build:floor": "vite build floorstep"
+    "build:floor": "vite build floorstep",
+    "dev:soccer": "vite soccer --host",
+    "build:soccer": "vite build soccer"
   },
   "dependencies": {
     "@fontsource/bangers": "^5.3.0",

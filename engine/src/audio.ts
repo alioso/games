@@ -106,6 +106,15 @@ export class Synth {
     this.loadSamples();
   }
 
+  /** The audio context and the master output (null until audio is unlocked), for games that build
+   *  their own sound graphs on top of the shared output. */
+  get context() {
+    return this.ctx;
+  }
+  get output() {
+    return this.master;
+  }
+
   setVolume(v: number) {
     this.volume = v;
     if (this.master) this.master.gain.value = v;

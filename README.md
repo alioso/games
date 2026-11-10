@@ -6,6 +6,7 @@ Browser games built on a small shared 3D engine (Three.js + post-processing).
 engine/      reusable engine: loop, renderer, camera, input, sound synth, particles, path-finding, save
 blocstrike/  the first game
 floorstep/   the second game
+soccer/      the third game: Animal Soccer
 tools/       headless-browser scripts: screenshots, staged mechanics, AI match simulation
 ```
 
@@ -15,6 +16,7 @@ tools/       headless-browser scripts: screenshots, staged mechanics, AI match s
 npm install
 npm run dev        # Blocstrike → http://localhost:5173  (also reachable from other devices on the network)
 npm run dev:floor  # Floor Step → http://localhost:5174
+npm run dev:soccer # Animal Soccer → http://localhost:5175
 ```
 
 Then press **F** for fullscreen.
@@ -137,6 +139,70 @@ Tweak it in `floorstep/src/data/`: `tuning.ts` (floors per difficulty, house siz
 damage, reach, stamina; how patient monsters are per difficulty), `monsters.ts` (the five monsters: health, attacks per appearance with their heights, lines, key hints),
 `residents.ts` (the residents: rooms, tests, wants, clue wording, fighting tips).
 
+## Animal Soccer
+
+Seven against seven, animal teams (baby bunnies, pigs, dogs, cats, ducks, raccoons, bears, mice), watched from the
+stand like on TV. All teams play the same; only the animals and kits differ. You control one player: the one nearest
+the ball switches to you automatically (yellow ring), or switch yourself. Keepers are run by the computer, but you take
+over when yours has the ball in their hands.
+
+**Modes:** Friendly (pick your team, 2×5 / 2×10 / 2×20 minutes, Easy / Medium / Hard; the opponent is drawn at random) and Training (your team, no
+opponents, no clock). Cup and Penalty shootout are coming.
+
+**Controls** (also on the Controls screen; buttons are tap = soft, hold = harder, with a power bar over your player):
+
+| | Controller | Keyboard |
+|---|---|---|
+| Move | left stick / d-pad | WASD / arrows |
+| Sprint (hold) | RB or RT | Shift |
+| Switch player | LB or LT | Q |
+| Pause | Start | Esc |
+| **With the ball** | | |
+| Pass (tap short, hold harder) | A | J |
+| Shoot (hold for power; too much goes over) | X | K |
+| Lob / cross (hold for distance) | B | L |
+| Through ball (into space ahead of a teammate) | Y | I |
+| **Defending** | | |
+| Tackle | A | J |
+| Slide tackle | B | L |
+| A teammate presses too (hold) | X | K |
+| **Keeper with the ball in hand** | | |
+| Throw it out | A | J |
+| Kick it long | X or B | K or L |
+| **Free kicks and penalties** | | |
+| Free kick: shoot (hold longer to get over the wall) | X | K |
+| Your penalty: pick the corner, then shoot (not too long!) | stick + X | WASD + K |
+| Their penalty: hold where your keeper will dive (up = high, nothing = stay) | stick | WASD |
+
+Aim passes and shots with the stick: up/down picks the corner of the goal. Everything curls a little; placed shots bend
+away from the keeper. At set pieces a line at the bottom says which buttons do what.
+
+**Rules:** kick-offs, throw-ins, corners, goal kicks, goals, half time and full time, plus the referee (an owl):
+- **Fouls**: tackling through the dribbler (when they're shielding the ball), sliding in from behind, taking the
+  player instead of the ball, or catching someone just after they've passed it. Clean tackles (timed when the ball's
+  been pushed out in front) are fine. A foul gives a **free kick**; in the fouling team's own box, a **penalty**.
+- **Free kicks** near goal get a wall (2 or 3 players, 4 m away); everyone else stays 4 m back.
+- **Penalties**: the camera goes behind the taker. Taking one, aim with the stick; facing one, you're in goal and pick
+  where to dive before the kick (a guess, like a real keeper).
+- **Cards**: yellow for reckless fouls (mostly slides from behind), red for a second yellow or a slide from behind
+  that stops a clear run at goal. A sent-off player walks off and the team plays with six. Cards show under the
+  team names. (Keepers only ever get yellows.)
+- **Offside**: only clear ones (well past the second-last defender when the pass is played), so it's rare. It's an
+  indirect free kick: a goal straight from it doesn't count.
+
+**Sounds** (`soccer/src/game/sounds.ts`) are made on the fly: the ball's pock and thump (harder kicks deeper, with
+a whoosh), the referee's pea whistle, a ringing post, the net, and a crowd that murmurs, swells near the goals,
+"ooh"s, roars at goals (with a horn), groans, boos fouls, applauds saves, hushes for penalties and chants now and then.
+Sounds are panned to where they happen on screen.
+
+**Goal celebrations** come round from a shuffled pack (all seven before any repeats): the corner pile-on, a knee
+slide, the airplane (the whole team flying behind in a line), a backflip with the others clapping, a team dance in
+a row facing the fans, everyone belly-sliding, and a spin with the team running rings round the scorer. The team
+that let it in stands around heads down.
+
+Tweak it in `soccer/src/data/`: `tuning.ts` (pitch size, ball physics, running speeds, kick powers, camera, how good the
+computer is at each difficulty), `teams.ts` (team names, fur and kit colours, shirt numbers).
+
 ## Tools
 
 With `npm run dev` (Blocstrike) or `npm run dev:floor` (Floor Step) running:
@@ -164,7 +230,26 @@ node tools/floorstep-duel.mjs knight Claught,Sieger hard  # films fight scenes a
 node tools/floorstep-talk.mjs        # talks to every resident on a floor, prints what they say
 node tools/floorstep-anim.mjs knight  # frame strips of walking, turning, combos, heavy blows and a fight (judge animation)
 node tools/floorstep-probe.mjs "<js>" [ms]   # run code in the page (window.floorstep), optional screenshot
+
+node tools/soccer.mjs 40 4            # Animal Soccer (dev:soccer running): title, kick-off, then the computer plays itself (40 s at 4× speed), screenshots
+node tools/soccer-controls.mjs        # plays with the keyboard: kick-off pass, dribbling, held shots, a tackle
+node tools/soccer-shots.mjs 24        # 24 shots per difficulty against the keeper: goals / saves / misses
+node tools/soccer-shots.mjs 24 them   # the same, but the computer shoots (its way) at your keeper
+node tools/soccer-flow.mjs 25         # how a computer-vs-computer match flows: passes (completed / intercepted), possession, tackles, shots
+node tools/soccer-curl.mjs            # how much curled passes, crosses and shots bend, and that they still land on target
+node tools/soccer-sounds.mjs          # records every sound in turn to tools/shots/soccer/sounds.wav (+ sounds.txt: what's when)
+node tools/soccer-setpieces.mjs       # stages a free kick, a penalty each way (you shoot / you dive), an offside and a sending-off; screenshots
+node tools/soccer-touch.mjs           # ball control: distance from the feet while dribbling / turning, and a pass being received
+node tools/soccer-poses.mjs           # freezes one player through a run and a kick, close up (tools/shots/soccer/pose-*.png)
+node tools/soccer-celebrations.mjs [--close] [kind ...]  # forces a goal per celebration, frames of each (celeb-<kind>-*.png)
+node tools/soccer-celeb-poses.mjs     # the celebration poses frozen side-on (tools/shots/soccer/celeb-poses.png)
+node tools/soccer-closeup.mjs         # zoomed-in burst of frames while the computer plays, plus the goal
+node tools/soccer-sheet.mjs           # picture of all eight teams (tools/shots/soccer/teams.png)
 ```
+
+In Animal Soccer's console, `soccer.start('duck', 'pig', 5, 'hard')` starts a match, `soccer.auto()` lets the computer
+play your side, `soccer.speed(8)` fast-forwards (`0` freezes it), `soccer.camera([x, y, z, lookX, lookY, lookZ])` pins the camera
+(`null` to let go), and `soccer.match` is the live match, and `soccer.sfx` plays any sound (`soccer.sfx.goal(true)`, `soccer.sfx.whistle(3)`).
 
 In the browser console, `blocstrike.match` is the live round, `blocstrike.settings.coins = 500` gives you coins
 (then `blocstrike.save()`), `blocstrike.useArena('volcano')` switches arena, and `blocstrike.simulate('hard', 10, ['spear', 'grenade'], 'beach')` runs quick AI rounds.

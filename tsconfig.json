@@ -11,5 +11,5 @@
     "types": ["vite/client"],
     "paths": { "@engine/*": ["./engine/src/*"] }
   },
-  "include": ["engine/src", "blocstrike/src", "floorstep/src"]
+  "include": ["engine/src", "blocstrike/src", "floorstep/src", "soccer/src"]
 }
