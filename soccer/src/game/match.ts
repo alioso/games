@@ -26,7 +26,7 @@ export interface Side extends SideRef {
   extraPress: boolean;
 }
 
-export type Phase = 'kickoff' | 'play' | 'out' | 'restart' | 'goal' | 'replay' | 'halftime' | 'fulltime';
+export type Phase = 'kickoff' | 'play' | 'out' | 'restart' | 'goal' | 'replay' | 'shootout' | 'halftime' | 'fulltime';
 export type RestartKind = 'kickoff' | 'throw' | 'corner' | 'goalkick' | 'free' | 'penalty';
 
 export interface Restart {
@@ -100,6 +100,10 @@ export interface MatchOptions {
   weather?: Weather;
   /** At whose ground: yours (home) or theirs (away); drawn at random when not given. */
   venue?: 'home' | 'away';
+  /** Just a penalty shootout (its own mode). */
+  shootoutOnly?: boolean;
+  /** A draw at full time goes to penalties (cup matches). */
+  penaltiesIfDraw?: boolean;
 }
 
 /** Formation, attack-relative: x from -1 (own goal line) to 1, z from -1 to 1 (fractions of half length/width). */
@@ -141,6 +145,21 @@ export class Match {
   /** Button being held for a kick, for the power bar. */
   charge: { power: number } | null = null;
   scorer: Player | null = null;
+  /**
+   * A penalty shootout: each side's kicks so far (scored or not), whose turn it is, who takes them
+   * (in order, round and round), the kick in progress, and the winner once there is one.
+   */
+  shootout: {
+    kicks: [boolean[], boolean[]];
+    turn: 0 | 1;
+    order: [Player[], Player[]];
+    next: [number, number];
+    taker: Player | null;
+    keeper: Player | null;
+    kickedAt: number;
+    wait: number;
+    winner: 0 | 1 | null;
+  } | null = null;
   /** Show goal replays (off for the computer playing itself behind the menu). */
   replays = true;
   /** The last goal: when, and at which end. */
@@ -312,7 +331,7 @@ export class Match {
     this.time += dt;
     this.phaseT += dt;
     this.switchLock = Math.max(0, this.switchLock - dt);
-    if (!this.training && (this.phase === 'play' || this.phase === 'out' || this.phase === 'restart')) {
+    if (!this.training && !this.shootout && (this.phase === 'play' || this.phase === 'out' || this.phase === 'restart')) {
       this.clock += dt;
       if (this.clock >= this.halfLength && this.phase !== 'out') this.endHalf();
     }
@@ -333,6 +352,12 @@ export class Match {
     this.ballPlay(dt);
     for (const e of this.ball.step(dt)) this.ballEvent(e);
     if (this.pass && (this.time - this.pass.t > 3 || this.ball.owner || this.ball.holder)) this.pass = null;
+    // Shootout: once it's struck, the taker's done with it; if it hasn't gone in after a moment, it's missed (or saved).
+    const so = this.shootout;
+    if (so && this.phase === 'play' && so.taker) {
+      if (!so.kickedAt && this.penalty?.kickedAt) { so.kickedAt = this.penalty.kickedAt; so.taker.noTouch = 6; }
+      if (so.kickedAt && this.time - so.kickedAt > 2.6) this.shootoutKick(false);
+    }
   }
 
   /** Bump players apart so nobody overlaps. */
@@ -686,6 +711,11 @@ export class Match {
 
   /** During a penalty, a camera behind the taker looking at the goal (or null). */
   penaltyView() {
+    // A shootout: always behind the spot, looking at the goal (at +x).
+    if (this.shootout && this.phase !== 'fulltime') {
+      const sx = L - PITCH.spot;
+      return { from: [sx - 6, 2.3, 0.6] as const, at: [L, 0.8, 0] as const };
+    }
     const pen = this.penalty;
     if (!pen) return null;
     if (pen.kickedAt && this.time - pen.kickedAt > 2.2) { this.penalty = null; return null; }
@@ -1195,6 +1225,7 @@ export class Match {
         break;
       case 'goal': {
         if (this.phase !== 'play') break;
+        if (this.shootout) { if (e.end > 0) this.shootoutKick(true); break; }
         if (this.indirectBy && this.ball.lastTouch === this.indirectBy) {
           // Straight in from an indirect free kick: doesn't count.
           const defending = this.sides.find((s) => s.dir === -e.end)!;
@@ -1226,6 +1257,7 @@ export class Match {
       }
       case 'out': {
         if (this.phase !== 'play') break;
+        if (this.shootout) { this.shootoutKick(false); break; }
         const lt = this.ball.lastTouch;
         const ltSide = lt ? lt.side.index : 0;
         if (this.lastShot && this.time - this.lastShot.t < 2.5 && e.side === 'goal') this.emit({ kind: 'miss' });
@@ -1325,6 +1357,13 @@ export class Match {
         break;
       case 'replay':
         break;
+      case 'shootout': {
+        // Between kicks: everyone stands about; then the next one.
+        for (const p of this.players) if (p.state !== 'celebrate') p.mx = p.mz = 0;
+        const so = this.shootout;
+        if (so && so.winner === null && this.phaseT > so.wait) this.nextPenalty();
+        break;
+      }
       case 'halftime':
         for (const p of this.players) { p.mx = p.mz = 0; }
         if (this.phaseT > 3.5) {
@@ -1530,11 +1569,12 @@ export class Match {
     }
   }
 
-  private setupRestart(kind: RestartKind, side: Side, x: number, z: number, indirect = false) {
+  private setupRestart(kind: RestartKind, side: Side, x: number, z: number, indirect = false, forced: Player | null = null) {
     let taker: Player | null;
     this.wall.clear();
     this.penalty = null;
-    if (kind === 'goalkick') taker = side.players[0]?.role === 'gk' ? side.players[0] : side.players[0] ?? null;
+    if (forced) taker = forced;
+    else if (kind === 'goalkick') taker = side.players[0]?.role === 'gk' ? side.players[0] : side.players[0] ?? null;
     else if (kind === 'penalty') taker = side.players.find((p) => p.role === 'fwd') ?? side.players.filter((p) => p.role !== 'gk').at(-1) ?? null;
     else {
       taker = null;
@@ -1630,12 +1670,122 @@ export class Match {
       this.emit({ kind: 'banner', text: 'HALF TIME', sub: `${this.sides[0].team.short} ${this.sides[0].score} - ${this.sides[1].score} ${this.sides[1].team.short}`, time: 3.2 });
       this.emit({ kind: 'halftime' });
       this.setPhase('halftime');
+    } else if (this.opts.penaltiesIfDraw && this.sides[0].score === this.sides[1].score) {
+      // A draw in the cup: straight to penalties.
+      this.emit({ kind: 'whistle', long: 3 });
+      this.startShootout(4);
+      this.emit({ kind: 'banner', text: 'PENALTIES!', sub: `${this.sides[0].score} - ${this.sides[1].score}: a draw, so it's a shootout · ${this.sides[this.shootout!.turn].team.name} go first`, time: 3.6 });
     } else {
       this.emit({ kind: 'whistle', long: 3 });
       this.emit({ kind: 'banner', text: 'FULL TIME', sub: `${this.sides[0].team.short} ${this.sides[0].score} - ${this.sides[1].score} ${this.sides[1].team.short}`, time: 99 });
       this.emit({ kind: 'fulltime' });
       this.setPhase('fulltime');
     }
+  }
+
+  // ---------- penalty shootouts ----------
+
+  /** Start a shootout: who goes first is a coin toss; takers in order (strikers first, keeper last). */
+  startShootout(wait = 2.5) {
+    this.orders.clear();
+    this.ball.owner = this.ball.holder = null;
+    this.restart = null;
+    this.pendingRestart = null;
+    this.penalty = null;
+    const order = (s: Side) => {
+      const rank: Record<Role, number> = { fwd: 0, mid: 1, def: 2, gk: 3 };
+      return [...s.players].filter((p) => !this.sentOff.includes(p)).sort((a, b) => rank[a.role] - rank[b.role] || b.number - a.number);
+    };
+    this.shootout = { kicks: [[], []], turn: Math.random() < 0.5 ? 0 : 1, order: [order(this.sides[0]), order(this.sides[1])], next: [0, 0], taker: null, keeper: null, kickedAt: 0, wait, winner: null };
+    this.lineUpForShootout();
+    this.setPhase('shootout');
+  }
+
+  /** Everyone not taking part stands in a line on halfway; the keepers wait nearby. */
+  private lineUpForShootout(taker: Player | null = null, keeper: Player | null = null) {
+    for (const s of this.sides) {
+      const row = s.players.filter((p) => p !== taker && p !== keeper && !this.sentOff.includes(p));
+      row.forEach((p, i) => p.teleport(s.index === 0 ? -0.7 : 0.7, (i - (row.length - 1) / 2) * 1.1, Math.PI / 2));
+    }
+  }
+
+  /** Set up the next kick: the shooting side attacks the goal at +x, the other side's keeper is in it. */
+  private nextPenalty() {
+    const so = this.shootout!;
+    const side = this.sides[so.turn], other = this.other(side);
+    side.dir = 1;
+    other.dir = -1;
+    const order = so.order[so.turn];
+    const taker = order[so.next[so.turn]++ % order.length];
+    so.taker = taker;
+    so.kickedAt = 0;
+    this.lineUpForShootout(taker, other.players.find((p) => p.role === 'gk') ?? null);
+    this.setupRestart('penalty', side, L - PITCH.spot, 0, false, taker);
+    so.keeper = this.penalty?.keeper ?? null;
+    // (The shooting side's own keeper waits on halfway too.)
+    const ownKeeper = side.players.find((p) => p.role === 'gk' && p !== taker);
+    if (ownKeeper) ownKeeper.teleport(-0.7 * (side.index === 0 ? 1 : -1) - 1.2, 0, Math.PI / 2);
+    this.referee.place(L - 7.5, -4.5);
+  }
+
+  /** May this player move in the shootout right now? (The taker until they've struck it, and the keeper.) */
+  inShootout(p: Player) {
+    const so = this.shootout;
+    if (!so) return true;
+    return p === so.keeper || (p === so.taker && !so.kickedAt);
+  }
+
+  /** A kick's done: count it, react, and either the next one or a winner. */
+  private shootoutKick(scored: boolean) {
+    const so = this.shootout!;
+    if (!so.taker) return;
+    const side = this.sides[so.turn];
+    so.kicks[so.turn].push(scored);
+    const taker = so.taker;
+    so.taker = null;
+    this.orders.clear();
+    this.ball.owner = null;
+    this.penalty = null;
+    if (scored) {
+      this.emit({ kind: 'goal', side, scorer: taker, ownGoal: false });
+      taker.setState('celebrate');
+      this.emit({ kind: 'voice', who: taker, mood: 'happy' });
+    } else {
+      this.emit({ kind: 'miss' });
+      taker.glum = true;
+      if (so.keeper && this.ball.lastTouch === so.keeper) { so.keeper.cheer = 2; this.emit({ kind: 'voice', who: so.keeper, mood: 'happy' }); }
+    }
+    const [a, b] = so.kicks;
+    const sa = a.filter(Boolean).length, sb = b.filter(Boolean).length;
+    const score = `${this.sides[0].team.short} ${sa} - ${sb} ${this.sides[1].team.short}`;
+    // Decided? In the first five each, when one side can't catch up; after that, at the end of a round.
+    let winner: 0 | 1 | null = null;
+    if (a.length <= 5 && b.length <= 5) {
+      if (sa > sb + (5 - b.length)) winner = 0;
+      else if (sb > sa + (5 - a.length)) winner = 1;
+    } else if (a.length === b.length && sa !== sb) winner = sa > sb ? 0 : 1;
+    const saved = !scored && this.ball.lastTouch === so.keeper;
+    this.emit({ kind: 'banner', text: scored ? 'SCORED!' : saved ? 'SAVED!' : 'MISSED!', sub: score, time: 1.8, color: scored ? undefined : '#ffd040' });
+    so.turn = so.turn === 0 ? 1 : 0;
+    so.wait = 2.4;
+    this.setPhase('shootout');
+    if (winner !== null) {
+      so.winner = winner;
+      const w = this.sides[winner];
+      this.emit({ kind: 'whistle', long: 3 });
+      this.emit({ kind: 'banner', text: `${w.team.short} WIN!`, sub: `${w.team.name} win ${Math.max(sa, sb)}-${Math.min(sa, sb)} on penalties`, time: 99 });
+      for (const p of w.players) if (!this.sentOff.includes(p)) p.setState('celebrate');
+      for (const p of this.other(w).players) p.glum = true;
+      this.emit({ kind: 'fulltime' });
+      this.setPhase('fulltime');
+    }
+  }
+
+  /** Who won (0 or 1), counting a shootout; null for a draw (or not over). */
+  winner(): 0 | 1 | null {
+    if (this.shootout?.winner !== undefined && this.shootout?.winner !== null) return this.shootout.winner;
+    const [a, b] = this.sides;
+    return a.score > b.score ? 0 : b.score > a.score ? 1 : null;
   }
 
   // ---------- drawing ----------

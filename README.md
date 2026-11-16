@@ -7,6 +7,7 @@ engine/      reusable engine: loop, renderer, camera, input, sound synth, partic
 blocstrike/  the first game
 floorstep/   the second game
 soccer/      the third game: Animal Soccer
+golf/        the fourth game: BB Golf (mini golf)
 tools/       headless-browser scripts: screenshots, staged mechanics, AI match simulation
 ```
 
@@ -17,6 +18,7 @@ npm install
 npm run dev        # Blocstrike → http://localhost:5173  (also reachable from other devices on the network)
 npm run dev:floor  # Floor Step → http://localhost:5174
 npm run dev:soccer # Animal Soccer → http://localhost:5175
+npm run dev:golf   # BB Golf → http://localhost:5176
 ```
 
 Then press **F** for fullscreen.
@@ -146,8 +148,11 @@ stand like on TV. All teams play the same; only the animals and kits differ. You
 the ball switches to you automatically (yellow ring), or switch yourself. Keepers are run by the computer, but you take
 over when yours has the ball in their hands.
 
-**Modes:** Friendly (pick your team, 2×5 / 2×10 / 2×20 minutes, Easy / Medium / Hard; the opponent is drawn at random) and Training (your team, no
-opponents, no clock). Cup and Penalty shootout are coming.
+**Modes:**
+- **Friendly**: pick your team, 2×5 / 2×10 / 2×20 minutes, Easy / Medium / Hard. The opponent is drawn at random.
+- **Cup**: eight teams, knockout (quarter-final, semi-final, final). You play your ties and the others are made up. A draw goes straight to penalties. Win three to lift the cup.
+- **Penalty shootout**: just penalties against a drawn opponent, with the camera behind the taker. It's five each, stopping early if one side can't catch up, then sudden death. Ticks and crosses under the scoreboard track every kick. You aim your kicks, and guess your keeper's dive when they shoot.
+- **Training**: your team, no opponents, no clock.
 
 **Controls** (also on the Controls screen; buttons are tap = soft, hold = harder, with a power bar over your player):
 
@@ -228,6 +233,47 @@ that let it in stands around heads down.
 Tweak it in `soccer/src/data/`: `tuning.ts` (pitch size, ball physics, running speeds, kick powers, camera, how good the
 computer is at each difficulty), `teams.ts` (team names, fur and kit colours, shirt numbers).
 
+## BB Golf
+
+Mini golf in the countryside for 1–4 players, with the Floor Step heroes and Youser the baby bunny. Milestones
+1–3 are done (the feel, players and scorecard, all 18 holes). Next are life and weather, then the shop, stickers
+and saving.
+
+- **Playing:** pick how many players, each picks a golfer (each ball has its own colour), then all 18 holes, the front 9 or the back 9.
+  - With 2–4 players, each golfer is played by a person or by the computer (easy: wobbly; good: steady). The computer thinks (searching every direction and strength through the aiming prediction, a slice per frame), turns, then putts.
+  - Everyone plays the whole hole in turn. Whoever did best on the last hole goes first; the others wait behind the tee.
+  - The scorecard comes after every hole (a star for a hole-in-one, circles under par, squares over), then a podium at the end.
+- **Putting:** aim with ← → (Shift or LB/RB for fine aim). Hold Space / A and the power gauge fills, then drops back if you keep holding; let go to putt.
+  - A dotted line shows the ball's path, as far as the hole allows (14 m on hole 1 down to 3 m on the last).
+  - V / Y shows the whole hole from above. Each hole opens with a flyover, and the mini-map sits top right.
+  - Holding N / Back skips the hole (counts 10); 10 strokes ends it.
+- **The course** (`golf/src/data/holes.ts`):
+
+  | Holes | What's on them |
+  |---|---|
+  | 1–3 | Daisy Lane, Hollow Log, Pony Hill: a curving S, a tunnel through a log, up and over a hill |
+  | 4–6 | Mushroom Patch, Garden Steps, The Bowl: bouncy toadstools, terraces dropping down, a high tee into a bowl |
+  | 7–9 | Hairpin, Duck Pond, Loop the Loop: a banked U-bend, a pond with a plank bridge, a loop-the-loop (needs a firm putt) |
+  | 10–12 | Rabbit Warren, Creek Crossing, Ramp Jump: burrows (one comes out by the cup, one back at the tee), a creek, a jump or the hedge tunnel |
+  | 13–15 | The Windmill, Barn Doors, Haystack Hill: up the hill to the sails, swinging doors, the cup on top of a hill past a rolling bale |
+  | 16–18 | Scarecrow Spin, Chicken Run, The Farmyard: spinning arms and mushrooms, switchback drops, bridge + loop + ramp finale |
+
+  Lanes are smooth curves (`curvy()`), with wood or dry-stone walls; each hole sits on a grassy bank with flower beds, a
+  signpost by the tee, and the countryside round it (trees, bushes, rocks, flowers, a farm, clouds). Scenery is in `golf/src/world/decor.ts`.
+  Water (a ball more than 10 cm into a pond) costs a stroke and puts you back where you hit from.
+- **Physics** use Rapier (`@dimforge/rapier3d-compat`):
+  - The ball is a real rolling sphere on the hole's exact ground mesh (slopes, mounds, pond banks, the ramp), with smoothed triangle seams and continuous collision.
+  - The game adds rolling resistance (a putting green's speed, much slower on sand), coming to rest on gentle ground, clean wall bounces, and the cup: slow enough and it drops, too fast and it hops the lip.
+  - Moving obstacles are kinematic bodies: they push the ball, even one sitting still.
+  - Mushrooms spring the ball back faster than it came. A loop is ridden on its track (speed from the climb); too slow and it runs back.
+  - Sounds follow what the ball touches: the carpet is almost silent; plank bridges rumble and click at every board, sand crunches, the loop whirrs; wood walls and stumps "tock", stone walls and rocks "clack", mushrooms boing.
+  - A ball that barely moves for a while (held against a wall on a slope, wedged by an obstacle) counts as stopped.
+- **Golfers** walk (or hop) up to the ball, stand in a putting stance and swing like a pendulum, then watch it roll.
+  - The camera sits behind the ball on the far side from the golfer, and swings round a little while you hold for power.
+  - Walking up to the ball they go round hedges, ponds, buildings, tunnels and moving things (a grid search over the hole and its bank), step up onto walls and over them, and follow the ground.
+  - If a hedge, post, pond or moving obstacle is where the golfer would stand, they putt left-handed from the other side; if that's blocked too, they turn see-through.
+  - Every ball that drops gets a cheer: a fist pump and a "ding-ding", or for par or better a jump for joy, confetti and a fanfare.
+
 ## Tools
 
 With `npm run dev` (Blocstrike) or `npm run dev:floor` (Floor Step) running:
@@ -271,11 +317,30 @@ node tools/soccer-celeb-poses.mjs     # the celebration poses frozen side-on (to
 node tools/soccer-faces.mjs           # every animal's face: calm, happy, sad, ouch, effort, running (faces.png)
 node tools/soccer-grounds.mjs         # every ground at a different time and weather (grounds.png)
 node tools/soccer-replay.mjs [goals]  # forces goals and takes frames of the replays (replay-*.png)
+node tools/soccer-shootout.mjs [n] [level]  # computer-vs-computer shootouts: every kick, the winner, conversion rate
+node tools/soccer-cup.mjs             # plays through a cup (each tie forced to a draw and penalties), saves the bracket screens
 node tools/soccer-closeup.mjs         # zoomed-in burst of frames while the computer plays, plus the goal
 node tools/soccer-sheet.mjs           # picture of all eight teams (tools/shots/soccer/teams.png)
 ```
 
-In Animal Soccer's console, `soccer.start('duck', 'pig', 5, 'hard')` starts a match (a sunny afternoon at the duck's ground; add `, false, 'night', 'snow'` for other conditions), `soccer.auto()` lets the computer
+BB Golf (with `npm run dev:golf` running):
+
+```sh
+node tools/golf.mjs                 # smoke test: flyover, aiming, a putt, the overview (tools/shots/golf/*.png)
+node tools/golf-physics.mjs 1 40    # random putts through the real physics vs the aiming prediction (how far apart)
+node tools/golf-play.mjs 1 18       # plays holes by itself with the best putt it can find; checks they can be finished
+node tools/golf-play.mjs 1 1 wizard-duck youser   # ...with several players
+node tools/golf-holes.mjs           # every hole from above on one sheet (tools/shots/golf/holes.png)
+node tools/golf-views.mjs 1 9 13    # the aim view on those tees, on one sheet (views.png)
+node tools/golf-pose.mjs knight-bear  # the putting stance face-on and down the line, through the swing
+node tools/golf-cpu.mjs 1 3 wizard-duck:good youser:easy   # computer players play holes by themselves
+node tools/golf-walk.mjs 13 0.6 -10   # put the ball there and check the golfer's walk never goes through anything solid
+```
+
+In BB Golf's console, `golf.play(0, 'knight-bear', 'youser:easy')` starts a round at hole 1 with those golfers (`:easy` / `:good`: played by the computer), `golf.auto()` takes your next putt for you,
+and `golf.hole` is the hole being played.
+
+In Animal Soccer's console, `soccer.start('duck', 'pig', 5, 'hard')` starts a match (a sunny afternoon at the duck's ground; add `, false, 'night', 'snow'` for other conditions), `soccer.shootout('duck', 'pig')` a shootout, `soccer.startCup('duck')` a cup, `soccer.auto()` lets the computer
 play your side, `soccer.speed(8)` fast-forwards (`0` freezes it), `soccer.camera([x, y, z, lookX, lookY, lookZ])` pins the camera
 (`null` to let go), and `soccer.match` is the live match, and `soccer.sfx` plays any sound (`soccer.sfx.goal(true)`, `soccer.sfx.whistle(3)`).
 

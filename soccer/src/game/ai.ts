@@ -80,6 +80,8 @@ export class TeamBrain {
       // Watch the ball (celebrating players face where the celebration wants).
       if (p.state !== 'celebrate') p.faceYaw = Math.atan2(b.pos.x - p.x, b.pos.z - p.z);
       if (p.state === 'celebrate' || phase === 'goal' || phase === 'halftime' || phase === 'fulltime') continue;
+      // A shootout: only the taker and the keeper move.
+      if (phase === 'shootout' || !m.inShootout(p)) { p.mx = p.mz = 0; continue; }
       if (p.role === 'gk') { this.keeper(p, dt); continue; }
       if (reading) continue;
       if (phase === 'restart' || phase === 'kickoff') { this.restart(p); continue; }

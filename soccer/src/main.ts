@@ -14,6 +14,7 @@ import { Match, type MatchEvent, type MatchOptions } from './game/match';
 import { CONTROL_HELP, Controller, NO_INPUT } from './game/controls';
 import { SFX, initSounds } from './game/sounds';
 import { Replay } from './game/replay';
+import { Cup, ROUND_NAMES } from './game/cup';
 import { Stadium } from './world/stadium';
 import { InkEffect } from './world/inkEffect';
 import { Hud } from './ui/hud';
@@ -81,6 +82,8 @@ let paused = false;
 let simSpeed = 1;
 let fullTimeAt = 0;
 let lastSetup: MatchOptions | null = null;
+/** The cup being played (null outside the cup). */
+let cup: Cup | null = null;
 /** Goal replays: recorded as we go, played after the celebration. */
 const replay = new Replay();
 let replayCount = 0;
@@ -111,6 +114,7 @@ function startMatch(opts: MatchOptions, demo = false) {
   replay.stop();
   replayOutAt = 0;
   renderer.scene.add(match.group);
+  if (opts.shootoutOnly) match.startShootout(3);
   paused = false;
   fullTimeAt = 0;
   hud.show(!demo);
@@ -119,7 +123,8 @@ function startMatch(opts: MatchOptions, demo = false) {
   if (!demo) {
     lastSetup = { ...opts, time: undefined, weather: undefined, venue: undefined };
     // Where we are, and what it's like.
-    hud.showBanner(stadium.look.ground.name.toUpperCase(), `${TIME_NAMES[where.time]} · ${weatherName(where.time, where.weather)}`, 2.6);
+    if (opts.shootoutOnly && match.shootout) hud.showBanner('PENALTIES!', `${stadium.look.ground.name} · ${match.sides[match.shootout.turn].team.name} go first`, 2.8);
+    else hud.showBanner(stadium.look.ground.name.toUpperCase(), `${TIME_NAMES[where.time]} · ${weatherName(where.time, where.weather)}`, 2.6);
   }
   camX = 0;
 }
@@ -131,17 +136,23 @@ function demoMatch() {
 
 // ---------- menus ----------
 
+/** A friendly: how long, how hard, then the opponent's drawn. */
+function friendly(you: Team) {
+  pickLength(you, (half) => pickLevel(you, half, (d) => drawOpponent(you, (them) => startMatch({ home: you, away: them, half, difficulty: d }), () => friendly(you))));
+}
+
 function titleMenu() {
+  cup = null;
   if (!attract) demoMatch();
   hud.show(false);
   menu.show({
     title: 'ANIMAL SOCCER',
     subtitle: 'Seven against seven',
     items: [
-      { label: 'Friendly match', sub: 'Against a random team', action: () => pickTeam('Pick your team', (you) => pickLength(you)) },
+      { label: 'Friendly match', sub: 'Against a random team', action: () => pickTeam('Pick your team', friendly) },
       { label: 'Training', sub: 'Your team, nobody else', action: () => pickTeam('Pick your team', (you) => { menu.hide(); startMatch({ home: you, away: TEAMS.find((t) => t !== you)!, half: 60, difficulty: 'easy', training: true }); }) },
-      { label: 'Cup', sub: 'Coming soon', disabled: true, action: () => {} },
-      { label: 'Penalty shootout', sub: 'Coming soon', disabled: true, action: () => {} },
+      { label: 'Cup', sub: 'Eight teams, knockout: win three to lift it', action: () => pickTeam('Pick your team', (you) => pickLength(you, (half) => pickLevel(you, half, (d) => { cup = new Cup(you, TEAMS, half, d); cupMenu(); }))) },
+      { label: 'Penalty shootout', sub: 'Five each, then sudden death', action: () => pickTeam('Pick your team', (you) => pickLevel(you, 0, (d) => drawOpponent(you, (them) => startMatch({ home: you, away: them, half: 60, difficulty: d, shootoutOnly: true }), titleMenu))) },
       { label: 'Controls', action: () => controlsMenu(titleMenu) },
     ],
   });
@@ -157,32 +168,29 @@ function pickTeam(title: string, then: (t: Team) => void, not?: Team) {
   });
 }
 
-function pickLength(you: Team) {
+function pickLength(you: Team, then: (half: number) => void) {
   menu.show({
     title: 'How long?',
     subtitle: you.name,
-    items: HALF_LENGTHS.map((m) => ({ label: `2 × ${m} minutes`, action: () => pickLevel(you, m) })),
+    items: HALF_LENGTHS.map((m) => ({ label: `2 × ${m} minutes`, action: () => then(m) })),
     focus: 0,
     back: titleMenu,
   });
 }
 
-function pickLevel(you: Team, half: number) {
+function pickLevel(you: Team, half: number, then: (d: Difficulty) => void) {
   menu.show({
     title: 'How hard?',
-    subtitle: `${you.name} · 2 × ${half} minutes`,
-    items: (Object.keys(AI_LEVELS) as Difficulty[]).map((d) => ({
-      label: AI_LEVELS[d].label,
-      action: () => drawOpponent(you, half, d),
-    })),
+    subtitle: half ? `${you.name} · 2 × ${half} minutes` : you.name,
+    items: (Object.keys(AI_LEVELS) as Difficulty[]).map((d) => ({ label: AI_LEVELS[d].label, action: () => then(d) })),
     focus: 1,
-    back: () => pickLength(you),
+    back: titleMenu,
   });
 }
 
 /** The opponent is drawn at random: the pictures spin through the teams, then land on one. */
 let drawTimer = 0;
-function drawOpponent(you: Team, half: number, difficulty: Difficulty) {
+function drawOpponent(you: Team, go: (them: Team) => void, back: () => void) {
   const others = TEAMS.filter((t) => t !== you);
   const them = others[Math.floor(Math.random() * others.length)];
   const card = (t: Team) => `<img class="team-pic big" src="${teamPic(t)}" alt=""><div class="draw-name">${t.name}</div>`;
@@ -201,10 +209,10 @@ function drawOpponent(you: Team, half: number, difficulty: Difficulty) {
     items: [{ label: 'Kick off!', action: () => {
       if (!done) { land(); return; }
       menu.hide();
-      startMatch({ home: you, away: them, half, difficulty });
+      go(them);
     } }],
     focus: 0,
-    back: () => { clearInterval(drawTimer); pickLevel(you, half); },
+    back: () => { clearInterval(drawTimer); back(); },
   });
   // Spin through the teams, slowing down, then land.
   let i = 0, wait = 70, next = performance.now() + wait;
@@ -255,15 +263,76 @@ function fullTimeMenu() {
   const m = match!;
   hud.hideBanner();
   const [a, b] = m.sides;
-  const result = a.score > b.score ? 'You win!' : a.score < b.score ? 'You lose...' : 'A draw!';
+  const w = m.winner();
+  const result = w === 0 ? 'You win!' : w === 1 ? 'You lose...' : 'A draw!';
+  const so = m.shootout;
+  const pens: [number, number] | null = so ? [so.kicks[0].filter(Boolean).length, so.kicks[1].filter(Boolean).length] : null;
+  const line = so && m.opts.shootoutOnly
+    ? `${a.team.name} ${pens![0]} - ${pens![1]} ${b.team.name} (penalties)`
+    : `${a.team.name} ${a.score} - ${b.score} ${b.team.name}${pens ? `<br>${pens[0]} - ${pens[1]} on penalties` : ''}`;
+  if (cup) { cupResult(a.score, b.score, pens); return; }
+  const again = lastSetup;
   menu.show({
-    title: 'FULL TIME',
-    subtitle: `${a.team.name} ${a.score} - ${b.score} ${b.team.name}<br><b>${result}</b>`,
+    title: so && m.opts.shootoutOnly ? 'SHOOTOUT OVER' : 'FULL TIME',
+    subtitle: `${line}<br><b>${result}</b>`,
     items: [
-      { label: 'Rematch', action: () => { menu.hide(); if (lastSetup) startMatch(lastSetup); } },
-      { label: 'New opponent', action: () => { if (lastSetup) drawOpponent(lastSetup.home, lastSetup.half, lastSetup.difficulty); } },
+      { label: 'Rematch', action: () => { menu.hide(); if (again) startMatch(again); } },
+      { label: 'New opponent', action: () => { if (again) drawOpponent(again.home, (them) => startMatch({ ...again, away: them }), titleMenu); } },
       { label: 'Main menu', action: titleMenu },
     ],
+  });
+}
+
+// ---------- the cup ----------
+
+/** The bracket, and your next tie. */
+function cupMenu() {
+  const c = cup!;
+  const opp = c.opponent;
+  menu.show({
+    title: ROUND_NAMES[c.round].toUpperCase(),
+    subtitle: `${c.html()}<div class="cup-next">${c.you.name} v ${opp.name}</div>`,
+    items: [
+      { label: 'Play!', action: () => { menu.hide(); startMatch({ home: c.you, away: opp, half: c.half, difficulty: c.difficulty, penaltiesIfDraw: true }); } },
+      { label: 'Give up the cup', action: () => { cup = null; titleMenu(); } },
+    ],
+    focus: 0,
+  });
+}
+
+/** After a cup tie: through, out, or champions. */
+function cupResult(yours: number, theirs: number, pens: [number, number] | null) {
+  const c = cup!;
+  c.record(yours, theirs, pens);
+  const round = ROUND_NAMES[c.round];
+  if (c.won) {
+    // Champions!
+    SFX.goal(true);
+    SFX.chantFor(!hostIsYou, 2);
+    menu.show({
+      title: '🏆 CHAMPIONS! 🏆',
+      subtitle: `<img class="team-pic big champion" src="${teamPic(c.you)}" alt=""><div class="cup-next">${c.you.name} win the Cup!</div>${c.html()}`,
+      items: [{ label: 'Play another cup', action: () => { cup = new Cup(c.you, TEAMS, c.half, c.difficulty); cupMenu(); } }, { label: 'Main menu', action: () => { cup = null; titleMenu(); } }],
+      focus: 0,
+    });
+    return;
+  }
+  if (c.out) {
+    c.finishWithoutYou();
+    const champ = c.rounds[2][0]?.winner;
+    menu.show({
+      title: 'KNOCKED OUT',
+      subtitle: `Out in the ${round.toLowerCase()}${champ ? ` · ${champ.name} won the cup` : ''}${c.html()}`,
+      items: [{ label: 'Try again', action: () => { cup = new Cup(c.you, TEAMS, c.half, c.difficulty); cupMenu(); } }, { label: 'Main menu', action: () => { cup = null; titleMenu(); } }],
+      focus: 0,
+    });
+    return;
+  }
+  menu.show({
+    title: 'THROUGH!',
+    subtitle: `You're through to the ${ROUND_NAMES[c.round + 1].toLowerCase()}${c.html()}`,
+    items: [{ label: 'Next round', action: () => { c.advance(); cupMenu(); } }],
+    focus: 0,
   });
 }
 
@@ -290,7 +359,7 @@ function hintFor(m: Match) {
     }
   }
   if (m.penalty && m.penalty.keeper === h && !m.penalty.kickedAt) return `Penalty against you! Hold the stick where you'll dive (up = high, nothing = stay in the middle)`;
-  if (m.ball.holder === h && h.role === 'gk') return `Your keeper has it: ${btn('A', 'J')} throw · ${btn('X', 'K')} kick it long`;
+  if (m.ball.holder === h && h.role === 'gk' && !m.shootout) return `Your keeper has it: ${btn('A', 'J')} throw · ${btn('X', 'K')} kick it long`;
   return '';
 }
 
@@ -445,7 +514,8 @@ const loop = new GameLoop(
     replayTag.classList.toggle('on', !!replayBall);
     if (match) {
       const a = match.sides[0], b = match.sides[1];
-      hud.setScore(a.team, a.kit, a.score, match.training ? null : b.team, match.training ? null : b.kit, b.score, match.training ? null : match.minute, match.cardsFor(a), match.cardsFor(b));
+      hud.setScore(a.team, a.kit, a.score, match.training ? null : b.team, match.training ? null : b.kit, b.score, match.training ? null : match.shootout ? 'PENS' : match.minute, match.cardsFor(a), match.cardsFor(b));
+      hud.setShootout(match.shootout ? match.shootout.kicks : null, [a.team.short, b.team.short]);
       // Power bar over your player's head.
       const h = match.human;
       if (h && match.charge && !attract) {
@@ -485,6 +555,17 @@ window.soccer = {
   start(home = 'duck', away = 'pig', half = 5, difficulty: Difficulty = 'medium', training = false, time: TimeOfDay = 'day', weather: Weather = 'sunny') {
     menu.hide();
     startMatch({ home: TEAMS.find((t) => t.id === home)!, away: TEAMS.find((t) => t.id === away)!, half, difficulty, training, time, weather, venue: 'home' });
+  },
+  /** A penalty shootout on its own (tools: sunny afternoon at your ground). */
+  shootout(home = 'duck', away = 'pig', difficulty: Difficulty = 'medium') {
+    menu.hide();
+    startMatch({ home: TEAMS.find((t) => t.id === home)!, away: TEAMS.find((t) => t.id === away)!, half: 60, difficulty, shootoutOnly: true, time: 'day', weather: 'sunny', venue: 'home' });
+  },
+  /** The cup (tools: start one, and see it). */
+  get cup() { return cup; },
+  startCup(you = 'duck', half = 5, difficulty: Difficulty = 'medium') {
+    cup = new Cup(TEAMS.find((t) => t.id === you)!, TEAMS, half, difficulty);
+    cupMenu();
   },
   /** Your side plays itself. */
   auto(on = true) { if (match) { match.autopilot = on; match.replays = !on; } },
