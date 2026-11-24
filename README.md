@@ -8,6 +8,7 @@ blocstrike/  the first game
 floorstep/   the second game
 soccer/      the third game: Animal Soccer
 golf/        the fourth game: BB Golf (mini golf)
+maze/        the fifth game: A Maze In (find the ruby, get back out)
 tools/       headless-browser scripts: screenshots, staged mechanics, AI match simulation
 ```
 
@@ -19,6 +20,7 @@ npm run dev        # Blocstrike → http://localhost:5173  (also reachable from 
 npm run dev:floor  # Floor Step → http://localhost:5174
 npm run dev:soccer # Animal Soccer → http://localhost:5175
 npm run dev:golf   # BB Golf → http://localhost:5176
+npm run dev:maze   # A Maze In → http://localhost:5177
 ```
 
 Then press **F** for fullscreen.
@@ -274,6 +276,46 @@ and saving.
   - If a hedge, post, pond or moving obstacle is where the golfer would stand, they putt left-handed from the other side; if that's blocked too, they turn see-through.
   - Every ball that drops gets a cheer: a fist pump and a "ding-ding", or for par or better a jump for joy, confetti and a fanfare.
 
+## A Maze In
+
+Pick a hero (the golf cast: the eight Floor Step heroes and Youser) and go into the maze to find the ruby,
+then come back out the way you came in. Three mazes: hedges, city walls, a castle (each fixed, so you
+can learn it, and bigger than the last). Milestones 1–3 are done (the hedge maze, the dark, the map,
+the ruby, traps, hearts, riddle keepers, the monster). Next: the fight; the other two mazes; the
+heaven ramen ending.
+
+- **Mazes** (`maze/src/data/mazes.ts`): made from a seed. A carved maze, a few extra openings so there's
+  more than one way round, 2×2 clearings, the ruby's 3×3 chamber in the farthest part (scored by its
+  nearest cell, so opening the chamber can't make a shortcut), one way in (and out).
+  Sizes 17×17, 21×21, 25×25 cells; shortest way to the ruby about 170 m, 350 m, 400 m.
+- **The maze shifts** when you take the ruby (`shiftAfterRuby`): four times, of the passages on the
+  shortest way out, a hedge grows across the one that makes the way out longest (if every one would cut
+  it off, others open up); the map forgets those parts. Always the same per maze. The way out grows
+  from 170 → 245 m, 350 → 610 m, 400 → 690 m.
+- **The dark** (`maze/src/world/darkness.ts`): every material is darkened by where it is, from a
+  picture of the maze (40 cm per texel). You see as far as the hedges let you (7.5 m); places you've
+  seen stay dim; the rest is black. The same record fills in the map.
+- **The map** (top right; Y / M for the big one): what you've seen, you, a red glow roughly where the
+  ruby is, and the way out once you have it. The ruby hums, louder the nearer you are.
+- **Hearts and traps** (`maze/src/world/traps.ts`): 3 hearts a maze (refilled for the next one); none left
+  and the maze starts again. Thorns across a gap cost a heart; wasps sting you if you hurry past their
+  nest (creep by and they leave you be); mud slows you to a crawl. Traps sit mostly on the obvious route,
+  but there's always a way round without one, going in and coming out after the shift. Seen traps go on the map.
+- **Riddle keepers** (`maze/src/data/riddles.ts`): Floor Step's residents, each at a little gate in a gap
+  knocked through a hedge where it makes the biggest shortcut (one on the way in, one on the way out after
+  the shift). Talk to them (A / Space): a riddle with three answers. Right and they open the gate; wrong
+  and they won't let you through this time. 24 riddles, none asked twice in a go. A "?" on the map.
+- **The monster** (`maze/src/game/monster.ts`, model in `entities/monsterModel.ts`): the kid's drawing, a
+  floating hatched slab with one diamond eye (it shines even in the dark) and a separate hand with a gold
+  ring. It drifts about (a low moan now and then when it's near) and notices you if it sees you (9 m, in
+  front, nothing in the way), hears you (walking within 6 m, through hedges; creeping only within 1.5 m)
+  or smells you (2 m). Then the ring rolls over its fingers with a tingle, and it chases (3.15 m/s, you
+  run 3.6) with a heartbeat that quickens as it closes in; lose it and it searches, then gives up. Keeper
+  gates stop it. Starts somewhere new each try. Caught (until the fight scene comes): a heart, knocked
+  away, and it vanishes in a puff, back somewhere far off 6 s later.
+- **The ruby**: it rises, spins, bursts into light, and the light streams into your stick, which wakes
+  up as a wand (a glowing jewel on the tip).
+
 ## Tools
 
 With `npm run dev` (Blocstrike) or `npm run dev:floor` (Floor Step) running:
@@ -334,8 +376,14 @@ node tools/golf-holes.mjs           # every hole from above on one sheet (tools/
 node tools/golf-views.mjs 1 9 13    # the aim view on those tees, on one sheet (views.png)
 node tools/golf-pose.mjs knight-bear  # the putting stance face-on and down the line, through the swing
 node tools/golf-cpu.mjs 1 3 wizard-duck:good youser:easy   # computer players play holes by themselves
+node tools/maze.mjs 0 youser        # A Maze In: start, walk, big map, the ruby moment, out (tools/shots/maze/)
+node tools/maze-traps.mjs           # A Maze In: thorns, wasps (hurrying and creeping), mud, a riddle right and wrong, out of hearts
+node tools/maze-monster.mjs         # A Maze In: the monster close up; creeping/walking past it; seen, chased, caught
+node tools/maze-run.mjs 4           # A Maze In: a player who knows the way runs to the ruby round the traps; what the monster did
 node tools/golf-walk.mjs 13 0.6 -10   # put the ball there and check the golfer's walk never goes through anything solid
 ```
+
+In A Maze In's console, `maze.play(0, 'youser')` starts a maze with that hero; `maze.level` is the maze being played.
 
 In BB Golf's console, `golf.play(0, 'knight-bear', 'youser:easy')` starts a round at hole 1 with those golfers (`:easy` / `:good`: played by the computer), `golf.auto()` takes your next putt for you,
 and `golf.hole` is the hole being played.

@@ -13,7 +13,9 @@
     "dev:soccer": "vite soccer --host",
     "build:soccer": "vite build soccer",
     "dev:golf": "vite golf --host",
-    "build:golf": "vite build golf"
+    "build:golf": "vite build golf",
+    "dev:maze": "vite maze --host",
+    "build:maze": "vite build maze"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "0.19.3",

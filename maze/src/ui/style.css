@@ -1,0 +1,160 @@
+:root {
+  --ink: #15110f;
+  --paper: #fffaf0;
+  --yellow: #ffe23a;
+  --green: #2e8a4e;
+  --red: #e8402c;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #2a5a2a; font-family: 'Fredoka', system-ui, sans-serif; color: var(--ink); user-select: none; }
+#app canvas { display: block; }
+#ui { position: fixed; inset: 0; pointer-events: none; }
+.hidden { display: none !important; }
+
+/* ---------- hole card ---------- */
+.hud { position: absolute; inset: 0; }
+.card {
+  position: absolute; top: 18px; left: 22px; display: flex; align-items: center; gap: 12px;
+  background: var(--paper); border: 3px solid var(--ink); border-radius: 14px; padding: 8px 14px 8px 8px; box-shadow: 4px 4px 0 var(--ink);
+}
+.hole-no { font-family: 'Bungee', sans-serif; font-size: 30px; background: var(--yellow); border: 3px solid var(--ink); border-radius: 10px; min-width: 52px; height: 52px; display: flex; align-items: center; justify-content: center; }
+.hole-info { display: flex; flex-direction: column; line-height: 1.15; }
+.hole-info b { font-family: 'Bungee', sans-serif; font-size: 18px; }
+.hole-info span { font-size: 16px; }
+.who { display: flex; align-items: center; gap: 6px; margin-left: 10px; padding-left: 12px; border-left: 2px dashed var(--ink); font-size: 18px; }
+.who i { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--ink); display: inline-block; }
+.who b { font-family: 'Bungee', sans-serif; font-size: 26px; margin-left: 6px; }
+.who small { font-size: 13px; }
+
+/* ---------- mini-map ---------- */
+.minimap { position: absolute; top: 18px; right: 22px; width: 220px; height: 220px; background: rgba(255, 250, 240, 0.9); border: 3px solid var(--ink); border-radius: 14px; box-shadow: 4px 4px 0 var(--ink); }
+
+/* ---------- power gauge ---------- */
+.gauge { position: absolute; right: 40px; bottom: 90px; width: 34px; height: 240px; border: 3px solid var(--ink); border-radius: 12px; background: rgba(255, 250, 240, 0.9); box-shadow: 4px 4px 0 var(--ink); overflow: hidden; }
+.gauge-fill { position: absolute; left: 0; right: 0; bottom: 0; background: linear-gradient(0deg, #4cd04c 0%, #ffe23a 60%, #e8402c 100%); background-size: 100% 240px; background-position: bottom; }
+.gauge-ghost { position: absolute; left: -2px; right: -2px; height: 3px; background: var(--ink); }
+.gauge span { position: absolute; left: 50%; bottom: -26px; transform: translateX(-50%); font-family: 'Bungee', sans-serif; font-size: 12px; }
+
+/* ---------- banners ---------- */
+.banner { position: absolute; top: 30%; left: 0; right: 0; text-align: center; }
+.banner-text {
+  display: inline-block; font-family: 'Bungee', sans-serif; font-size: 96px; color: var(--yellow);
+  -webkit-text-stroke: 4px var(--ink); paint-order: stroke fill; text-shadow: 6px 6px 0 var(--ink); transform: rotate(-4deg);
+}
+.banner-sub { font-family: 'Bungee', sans-serif; font-size: 26px; color: var(--paper); -webkit-text-stroke: 2px var(--ink); paint-order: stroke fill; text-shadow: 3px 3px 0 var(--ink); margin-top: 4px; }
+.banner.pop .banner-text { animation: pop 0.45s cubic-bezier(.2, 1.6, .4, 1); }
+@keyframes pop { from { transform: rotate(-4deg) scale(0.2); } to { transform: rotate(-4deg) scale(1); } }
+
+.hint {
+  position: absolute; bottom: 22px; left: 50%; transform: translateX(-50%); background: var(--paper); border: 3px solid var(--ink);
+  border-radius: 10px; padding: 6px 16px; font-size: 18px; box-shadow: 3px 3px 0 var(--ink); white-space: nowrap;
+}
+.hint b { font-family: 'Bungee', sans-serif; background: var(--yellow); border: 2px solid var(--ink); border-radius: 6px; padding: 0 6px; }
+
+/* ---------- menus ---------- */
+.menu { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: auto; background: rgba(20, 40, 20, 0.45); }
+.menu-panel {
+  background: var(--paper); border: 4px solid var(--ink); border-radius: 18px; box-shadow: 8px 8px 0 var(--ink);
+  padding: 26px 36px 30px; min-width: 420px; max-width: 92vw; max-height: 92vh; overflow: auto; text-align: center;
+}
+.menu h1 { font-family: 'Bungee', sans-serif; font-size: 44px; margin: 0 0 6px; color: var(--green); -webkit-text-stroke: 2px var(--ink); paint-order: stroke fill; text-shadow: 3px 3px 0 var(--ink); }
+.menu-sub { margin: 0 0 18px; font-size: 18px; }
+.menu-items { display: flex; flex-direction: column; gap: 10px; align-items: stretch; }
+.menu.grid .menu-items { display: grid; grid-template-columns: repeat(4, 170px); gap: 14px; justify-content: center; }
+.menu-btn {
+  font-family: 'Bungee', sans-serif; font-size: 22px; padding: 12px 20px; border: 3px solid var(--ink); border-radius: 12px;
+  background: #fff; color: var(--ink); cursor: pointer; box-shadow: 4px 4px 0 var(--ink); transition: transform 0.08s;
+  display: flex; flex-direction: column; align-items: center; gap: 2px; outline: none;
+}
+.menu-btn.focus { background: var(--yellow); transform: translate(-2px, -2px) scale(1.03); box-shadow: 6px 6px 0 var(--ink); }
+.menu-btn.disabled { opacity: 0.45; }
+.menu-btn-sub { font-family: 'Fredoka', sans-serif; font-size: 14px; opacity: 0.8; }
+.menu.grid .menu-btn { font-size: 15px; padding: 8px 6px 10px; }
+.team-pic { width: 140px; height: 140px; border-radius: 10px; background: linear-gradient(#bfe3ff, #e8f6ff); border: 2px solid var(--ink); }
+.team-pic.big { width: 200px; height: 200px; display: block; margin: 0 auto; }
+.team-pic.small { width: 110px; height: 110px; display: block; margin: 6px auto 0; }
+.draw-card { display: inline-block; padding: 8px; border-radius: 14px; }
+.draw-card.landed { animation: land 0.4s cubic-bezier(.2, 1.6, .4, 1); background: var(--yellow); border: 3px solid var(--ink); box-shadow: 4px 4px 0 var(--ink); }
+.draw-name { font-family: 'Bungee', sans-serif; font-size: 24px; margin-top: 8px; }
+@keyframes land { from { transform: scale(0.6); } to { transform: scale(1); } }
+.menu-foot { margin-top: 18px; font-size: 15px; }
+
+/* ---------- controls sheet ---------- */
+.controls-table { border-collapse: collapse; margin: 0 auto; text-align: left; font-size: 16px; }
+.controls-table th { font-family: 'Bungee', sans-serif; font-size: 15px; padding: 12px 8px 4px; color: var(--green); }
+.controls-table td { padding: 3px 10px; border-bottom: 1px dashed rgba(0, 0, 0, 0.15); }
+.controls-table td.key { font-family: 'Bungee', sans-serif; font-size: 14px; white-space: nowrap; }
+.controls-table .head td { font-weight: 700; border-bottom: 2px solid var(--ink); }
+
+/* ---------- fades and status ---------- */
+.fade { position: absolute; inset: 0; background: #000; opacity: 0; transition: opacity 0.25s; }
+.fade.on { opacity: 1; }
+.padstatus { position: absolute; bottom: 12px; right: 16px; font-size: 14px; background: rgba(255, 255, 255, 0.85); border: 2px solid var(--ink); border-radius: 8px; padding: 3px 10px; }
+
+
+
+/* ---------- scorecard ---------- */
+.scorecard { border-collapse: collapse; margin: 10px auto; font-size: 15px; background: #fff; border: 3px solid var(--ink); }
+.scorecard th, .scorecard td { border: 1px solid #c8c0a8; padding: 3px 6px; min-width: 26px; text-align: center; }
+.scorecard tr.head th { background: var(--green); color: #fff; font-family: 'Bungee', sans-serif; font-weight: 400; }
+.scorecard tr.head th.now { background: var(--yellow); color: var(--ink); }
+.scorecard tr.pars td, .scorecard tr.pars th { background: #f4eedc; font-size: 13px; }
+.scorecard th { text-align: left; white-space: nowrap; }
+.scorecard th i { display: inline-block; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--ink); margin-right: 6px; vertical-align: -1px; }
+.scorecard .tot { font-family: 'Bungee', sans-serif; }
+.scorecard .vs { font-weight: 700; }
+.sc { display: inline-block; min-width: 22px; line-height: 20px; }
+.sc.ace { background: var(--yellow); border: 2px solid var(--ink); border-radius: 50%; font-weight: 700; }
+.sc.eagle { border: 2px solid #2e8a4e; border-radius: 50%; box-shadow: 0 0 0 2px #fff, 0 0 0 4px #2e8a4e; }
+.sc.birdie { border: 2px solid #2e8a4e; border-radius: 50%; }
+.sc.bogey { border: 2px solid #c84030; }
+.sc.double { border: 2px solid #c84030; box-shadow: 0 0 0 2px #fff, 0 0 0 4px #c84030; }
+
+/* ---------- results ---------- */
+.podium { display: flex; justify-content: center; align-items: flex-end; gap: 18px; margin: 8px 0; }
+.podium .spot { display: flex; flex-direction: column; align-items: center; font-weight: 700; }
+.podium .spot img { width: 120px; height: 120px; border-radius: 10px; border: 2px solid var(--ink); background: linear-gradient(#bfe3ff, #e8f6ff); }
+.podium .spot.first img { width: 160px; height: 160px; }
+.podium .spot b { font-family: 'Bungee', sans-serif; font-size: 22px; }
+.podium .block { width: 100%; background: var(--yellow); border: 3px solid var(--ink); border-top-left-radius: 8px; border-top-right-radius: 8px; font-family: 'Bungee', sans-serif; display: flex; align-items: center; justify-content: center; }
+.menu-btn.taken { opacity: 0.35; }
+
+.menu.wide .menu-panel { max-width: 96vw; }
+.menu.wide .menu-items { flex-direction: row; justify-content: center; }
+.ball-chip { display: inline-block; width: 18px; height: 18px; border-radius: 50%; border: 3px solid var(--ink); vertical-align: -3px; }
+.card .total { font-family: 'Bungee', sans-serif; font-size: 14px; margin-left: 8px; background: var(--ink); color: var(--yellow); border-radius: 6px; padding: 1px 6px; }
+
+/* ---------- A Maze In ---------- */
+html, body { background: #0c0c14; }
+.hearts { position: absolute; top: 16px; left: 22px; display: flex; gap: 6px; }
+.heart { font-size: 46px; line-height: 1; color: #f03a4a; -webkit-text-stroke: 3px var(--ink); paint-order: stroke fill; text-shadow: 3px 3px 0 var(--ink); transition: transform 0.2s; }
+.heart.lost { color: #4a4040; transform: scale(0.8); }
+.mazemap {
+  position: absolute; top: 18px; right: 22px; width: 220px; height: 220px; border: 3px solid var(--ink); border-radius: 14px;
+  box-shadow: 4px 4px 0 var(--ink); transition: all 0.25s ease;
+}
+.mazemap.big { top: 50%; right: 50%; width: min(80vh, 80vw); height: min(80vh, 80vw); transform: translate(50%, -50%); }
+.menu h1.maze-title { font-size: 60px; color: #ff4a60; }
+.bubble {
+  position: absolute; transform: translate(-50%, -100%); max-width: 280px; background: #fff; border: 3px solid var(--ink);
+  border-radius: 16px; padding: 8px 12px; font-size: 17px; font-weight: 600; box-shadow: 3px 3px 0 var(--ink); text-align: center; pointer-events: none;
+}
+.bubble::after { content: ''; position: absolute; left: 50%; bottom: -12px; border: 8px solid transparent; border-top: 10px solid var(--ink); transform: translateX(-50%); }
+.hurtflash { position: absolute; inset: 0; pointer-events: none; opacity: 0; box-shadow: inset 0 0 140px 40px rgba(220, 20, 30, 0.85); }
+.menu .riddle { font-size: 22px; font-weight: 600; margin: 10px 0 4px; }
+.menu .riddle-who { font-style: italic; opacity: 0.8; }
+.fightbars { position: absolute; top: 18px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 14px; }
+.fb b { font-family: 'Bungee', sans-serif; font-size: 18px; color: #fff; -webkit-text-stroke: 1.5px var(--ink); paint-order: stroke fill; }
+.fb.it { text-align: right; }
+.fb-bar { width: 300px; height: 22px; border: 3px solid var(--ink); border-radius: 10px; background: #3a2a2a; overflow: hidden; box-shadow: 3px 3px 0 var(--ink); }
+.fb-bar i { display: block; height: 100%; background: linear-gradient(#7ee070, #3aa040); transition: width 0.2s; }
+.fb.it .fb-bar i { background: linear-gradient(#c890ff, #7a40c8); margin-left: auto; }
+.fightbars.powered .fb.you .fb-bar i { background: linear-gradient(#ff8098, #d02040); }
+.fb.vs { font-family: 'Bungee', sans-serif; font-size: 30px; color: #ffd040; -webkit-text-stroke: 2px var(--ink); paint-order: stroke fill; }
+.pow {
+  position: absolute; transform: translate(-50%, -50%) rotate(var(--tilt)); font-family: 'Bungee', sans-serif; font-size: 40px;
+  -webkit-text-stroke: 3px var(--ink); paint-order: stroke fill; text-shadow: 3px 3px 0 var(--ink); pointer-events: none;
+  animation: powpop 0.9s ease-out forwards;
+}
+@keyframes powpop { 0% { transform: translate(-50%, -50%) rotate(var(--tilt)) scale(0.3); opacity: 1; } 20% { transform: translate(-50%, -60%) rotate(var(--tilt)) scale(1.15); } 100% { transform: translate(-50%, -110%) rotate(var(--tilt)) scale(1); opacity: 0; } }
