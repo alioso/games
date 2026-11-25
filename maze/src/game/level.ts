@@ -37,6 +37,8 @@ export class Level {
   readonly walker: Walker;
   readonly dark: Darkness;
   phase: LevelPhase = 'intro';
+  /** How long this try has taken so far (seconds; for the best times). */
+  elapsed = 0;
   private phaseT = 0;
   hasRuby = false;
   hearts = 3;
@@ -79,6 +81,7 @@ export class Level {
 
   constructor(readonly def: MazeDef, readonly number: number, character: Character) {
     this.layout = generate(def);
+    SFX.setTheme(def.theme);
     this.world = new MazeWorld(this.layout);
     this.group.add(this.world.group);
     this.walker = new Walker(character);
@@ -122,6 +125,7 @@ export class Level {
 
   update(dt: number, input: PadInput) {
     this.phaseT += dt;
+    if (this.phase !== 'done' && this.phase !== 'failed' && this.phase !== 'intro') this.elapsed += dt;
     let speed = 0, stride = 0;
     switch (this.phase) {
       case 'intro':
@@ -158,7 +162,7 @@ export class Level {
         }
         // Footsteps (squelches in the mud).
         this.stepRun += moved;
-        if (this.stepRun > (this.inMud ? 0.25 : creep ? 0.5 : 0.75)) { this.stepRun = 0; if (this.inMud) SFX.squelch(); else SFX.step(creep); }
+        if (this.stepRun > (this.inMud ? 0.25 : creep ? 0.5 : 0.75)) { this.stepRun = 0; if (this.inMud) SFX.squelch(this.slowKind === 'honey'); else SFX.step(creep); }
         this.movingNow = moved / dt > 0.3;
         // Go for the monster yourself (A, when it's right there and you can see it).
         if (input.b.action.pressed && this.canFight()) { this.startFight(true); break; }
@@ -228,6 +232,7 @@ export class Level {
     this.world.group.visible = false;
     setDarkOff(true);
     SFX.buzz(0);
+    this.events.push({ kind: 'banner', text: 'FIGHT!', sub: youStarted ? 'You caught it by surprise!' : 'It caught you!', time: 1.4, color: '#c8b0ff' });
     this.setPhase('fight');
   }
 
@@ -264,18 +269,32 @@ export class Level {
   }
 
   /**
-   * The traps: walking through thorns costs a heart; wasps sting you if you hurry past their nest
-   * (creep by slowly and they leave you be); mud just slows you right down.
+   * The traps. Thorns and open manholes cost a heart if you walk into them. Spikes and dragon fire
+   * hurt only while they're going off (watch, then go). Wasps sting and trapdoors give way if you
+   * hurry past (creep and you're fine). Mud and honey just slow you right down. (Falling flowerpots
+   * are checked where they land, in render.)
    */
   private traps(dt: number, speed: number) {
     this.inMud = false;
-    let buzz = 0, waspy = false;
+    let buzz = 0, waspy = false, door: TrapView | null = null;
+    const h = this.hero;
     for (const t of this.world.traps) {
-      const d = Math.hypot(this.hero.x - t.x, this.hero.z - t.z);
+      const d = Math.hypot(h.x - t.x, h.z - t.z);
       switch (t.trap.kind) {
         case 'thorns':
           if (this.inside(t, 0.05)) this.hurt('OUCH! THORNS!');
           break;
+        case 'manhole':
+          if (d < 0.88 && this.safe <= 0) { SFX.trap('clang', 1); this.hurt('OOPS! DOWN A MANHOLE!', 'You climb out... watch where you walk'); }
+          break;
+        case 'spikes':
+          if (t.danger && this.inside(t, 0.05)) this.hurt('OUCH! SPIKES!', 'Wait for them to go down, then dash');
+          break;
+        case 'fire': {
+          const [x0, z0, x1, z1] = t.lane!;
+          if (t.danger && h.x > x0 - 0.2 && h.x < x1 + 0.2 && h.z > z0 - 0.2 && h.z < z1 + 0.2) this.hurt('YOWCH! DRAGON FIRE!', 'Watch its eyes glow, then wait for the fire to stop');
+          break;
+        }
         case 'wasps':
           buzz = Math.max(buzz, Math.max(0, 1 - d / 5));
           if (d < 1.6) {
@@ -284,13 +303,51 @@ export class Level {
             if (this.waspT > 0.35) { this.waspT = 0; this.hurt('STUNG BY WASPS!', 'Creep past the nest slowly next time'); }
           }
           break;
+        case 'trapdoor':
+          if (this.inside(t, 0.1) && t.dropT <= 0) {
+            door = t;
+            if (speed > CREEP * 1.25) this.waspT += dt;
+            if (this.waspT > 0.3) {
+              this.waspT = 0;
+              t.dropT = 2.2;
+              SFX.trap('trapdoor', 1);
+              this.hurt('THE TRAPDOOR GAVE WAY!', 'Creep over trapdoors gently next time');
+            }
+          }
+          break;
         case 'mud':
-          if (this.inside(t, 0.3)) this.inMud = true;
+        case 'honey':
+          if (this.inside(t, 0.3)) { this.inMud = true; this.slowKind = t.trap.kind; }
           break;
       }
     }
-    if (!waspy) this.waspT = Math.max(0, this.waspT - dt);
+    // A creak as you step onto a trapdoor.
+    if (door && door !== this.onDoor) SFX.trap('creak', 1);
+    this.onDoor = door;
+    if (!waspy && !door) this.waspT = Math.max(0, this.waspT - dt);
     SFX.buzz(buzz);
+  }
+
+  /** Next to a trap you should creep past (for the hint): 'wasps', 'trapdoor', or null. */
+  creepNear(): 'wasps' | 'trapdoor' | null {
+    for (const t of this.world.traps) {
+      if (t.trap.kind === 'wasps' && Math.hypot(this.hero.x - t.x, this.hero.z - t.z) < 2.6) return 'wasps';
+      if (t.trap.kind === 'trapdoor' && t.dropT <= 0 && this.inside(t, -0.9)) return 'trapdoor';
+    }
+    return null;
+  }
+
+  /** What's slowing you down (for the hint). */
+  slowKind: 'mud' | 'honey' = 'mud';
+  private onDoor: TrapView | null = null;
+
+  /** The traps' sounds (quieter further off, none from far away), and pots landing on you. */
+  private trapEffects() {
+    for (const t of this.world.traps) {
+      const d = Math.hypot(this.hero.x - t.x, this.hero.z - t.z);
+      if (t.sounds.length && d < 11) for (const snd of t.sounds) SFX.trap(snd, Math.max(0.15, 1 - d / 11));
+      if (t.landed && this.phase === 'explore' && Math.hypot(this.hero.x - t.landed.x, this.hero.z - t.landed.z) < 0.62) this.hurt('BONK! A FLOWERPOT!', 'Watch for the shadow, and step aside');
+    }
   }
 
   /** Hurt by a trap: lose a heart (then a moment where nothing can hurt you); none left and you're out. */
@@ -422,13 +479,14 @@ export class Level {
     for (const k of [...closed, ...opened]) this.dark.forget(tileMid(k % tw), tileMid(Math.floor(k / tw)), 4.5);
     this.shake = 2;
     SFX.rumble();
-    this.events.push({ kind: 'banner', text: 'THE MAZE SHIFTS!', sub: 'Hedges have moved · find a new way out', time: 3.2, color: '#8ae060' });
+    this.events.push({ kind: 'banner', text: 'THE MAZE SHIFTS!', sub: this.world.style.shiftSub, time: 3.2, color: '#8ae060' });
   }
 
   /** Each frame: the dark, sparkles, the camera. */
   render(dt: number, camera: THREE.PerspectiveCamera) {
     if (this.fight) { this.fight.render(dt, camera); return; }
-    this.world.update(dt);
+    this.world.update(dt, this.hero);
+    this.trapEffects();
     this.dark.update(dt, this.hero.x, this.hero.z);
     this.sparks.update(dt);
     this.smoke.update(dt);

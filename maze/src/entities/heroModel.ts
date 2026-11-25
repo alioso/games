@@ -14,6 +14,8 @@ export type Pose =
   | 'jump' | 'crouch' | 'crouchblock' | 'sweep' | 'rising' | 'airslash' | 'down'
   // What the house's residents get up to:
   | 'sit' | 'stir' | 'read' | 'knit' | 'snore' | 'play' | 'peek' | 'puff'
+  // Heaven: eating ramen at the table (t drives the chopsticks; offset it so they don't all slurp together).
+  | 'slurp'
   // Golf: standing over the ball and putting (p: -1 full backswing … 0 at the ball … 1 follow-through),
   // watching it roll (leaning, willing it on), and the reactions.
   | 'putt' | 'watch' | 'joy' | 'pump' | 'sulk';
@@ -964,6 +966,7 @@ export function buildHero(look: HeroLook, opts: BuildOptions = {}): HeroRig {
       case 'read':
       case 'knit':
       case 'snore':
+      case 'slurp':
       case 'puff': {
         // Sitting down (on an armchair or a stool that isn't drawn), doing their thing.
         sp.pos('body', 0, -0.22, -0.08);
@@ -992,6 +995,17 @@ export function buildHero(look: HeroLook, opts: BuildOptions = {}): HeroRig {
           sp.rot('armL', 0.1, 0, -0.4);
           sp.rot('armR', -0.5, 0, 0.3);
           sp.rot('foreR', -1.2);
+        } else if (pose === 'slurp') {
+          // Noodles up from the bowl to the mouth, a long slurp, and back down; the other hand on the bowl.
+          const c = (t * 0.45) % 1;
+          const up = c < 0.25 ? c / 0.25 : c < 0.6 ? 1 : c < 0.75 ? 1 - (c - 0.6) / 0.15 : 0;
+          const e = up * up * (3 - 2 * up);
+          sp.rot('torso', 0.15 - 0.15 * e);
+          sp.rot('armR', -0.8 - 0.75 * e, -0.35 * e, 0.15);
+          sp.rot('foreR', -0.9 - 1.0 * e);
+          sp.rot('armL', -0.85, 0.45, -0.1);
+          sp.rot('foreL', -1.15);
+          sp.rot('head', 0.35 - 0.3 * e + (c > 0.25 && c < 0.6 ? Math.sin(t * 30) * 0.03 : 0), Math.sin(t * 0.4) * 0.1);
         } else if (pose === 'puff') {
           // Pipe to the mouth now and then.
           const up = Math.max(0, Math.sin(t * 0.7));

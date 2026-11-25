@@ -280,27 +280,39 @@ and saving.
 
 Pick a hero (the golf cast: the eight Floor Step heroes and Youser) and go into the maze to find the ruby,
 then come back out the way you came in. Three mazes: hedges, city walls, a castle (each fixed, so you
-can learn it, and bigger than the last). Milestones 1–3 are done (the hedge maze, the dark, the map,
-the ruby, traps, hearts, riddle keepers, the monster). Next: the fight; the other two mazes; the
-heaven ramen ending.
+can learn it, and bigger than the last). After the third ruby: heaven. All six milestones are done.
 
 - **Mazes** (`maze/src/data/mazes.ts`): made from a seed. A carved maze, a few extra openings so there's
   more than one way round, 2×2 clearings, the ruby's 3×3 chamber in the farthest part (scored by its
   nearest cell, so opening the chamber can't make a shortcut), one way in (and out).
-  Sizes 17×17, 21×21, 25×25 cells; shortest way to the ruby about 170 m, 350 m, 400 m.
-- **The maze shifts** when you take the ruby (`shiftAfterRuby`): four times, of the passages on the
-  shortest way out, a hedge grows across the one that makes the way out longest (if every one would cut
-  it off, others open up); the map forgets those parts. Always the same per maze. The way out grows
-  from 170 → 245 m, 350 → 610 m, 400 → 690 m.
+  Sizes 17×17, 21×21, 23×23 cells; shortest walk in and back out (after the shift) about 420 m, 550 m,
+  630 m (see `tools/maze-lengths.ts`; seeds picked with `tools/maze-seeds.ts`).
+- **The maze shifts** when you take the ruby (`shiftAfterRuby`): a few times (`shifts`: 4, 3, 3), of the
+  passages on the shortest way out, a wall grows across the one that makes the way out longest (if every
+  one would cut it off, others open up); the map forgets those parts. Always the same per maze. The way
+  out grows from 170 → 245 m, 233 → 313 m, 279 → 353 m.
+- **Themes** (`maze/src/world/themes.ts`): the hedge maze (clipped hedges, gravel, an evening in the
+  country); the city walls (plastered town walls with ivy and red tiles on top, cobbles, street lamps on
+  the corners, the town's houses round it, dusk, pigeons and a far-off bell); the castle (grey stone with
+  battlements, flagstones, braziers, banners, towers and a drawbridge over the moat, mountains under the
+  moon, wind and dripping water). Each has its own fight arena, footsteps and map colours.
 - **The dark** (`maze/src/world/darkness.ts`): every material is darkened by where it is, from a
   picture of the maze (40 cm per texel). You see as far as the hedges let you (7.5 m); places you've
   seen stay dim; the rest is black. The same record fills in the map.
 - **The map** (top right; Y / M for the big one): what you've seen, you, a red glow roughly where the
   ruby is, and the way out once you have it. The ruby hums, louder the nearer you are.
-- **Hearts and traps** (`maze/src/world/traps.ts`): 3 hearts a maze (refilled for the next one); none left
-  and the maze starts again. Thorns across a gap cost a heart; wasps sting you if you hurry past their
-  nest (creep by and they leave you be); mud slows you to a crawl. Traps sit mostly on the obvious route,
-  but there's always a way round without one, going in and coming out after the shift. Seen traps go on the map.
+- **Hearts and traps** (`maze/src/world/traps.ts`, rules in `level.ts` `traps()`): 3 hearts a maze
+  (refilled for the next one); none left and the maze starts again. Four kinds of trap (`TRAP_HOW`):
+
+  | | Hedges | City | Castle |
+  |---|---|---|---|
+  | Walk in and it hurts | thorns across a gap | an open manhole | (spikes, below) |
+  | Hurts when it goes off (watch, then go) | | flowerpots knocked off the wall: a shadow grows where one's coming down (right under you if you're in its room) | spikes shoot up through a plate across a gap (`SPIKES`); a stone dragon's eyes glow, it smokes, then breathes fire across the room (`FIRE`) |
+  | Hurry past and it gets you (creep!) | a wasps' nest | | a creaky cracked trapdoor |
+  | Just slows you down | mud | spilt honey | |
+
+  Traps sit mostly on the obvious route, but there's always a way round without one, going in and coming
+  out after the shift. Seen traps go on the map, each with its own mark.
 - **Riddle keepers** (`maze/src/data/riddles.ts`): Floor Step's residents, each at a little gate in a gap
   knocked through a hedge where it makes the biggest shortcut (one on the way in, one on the way out after
   the shift). Talk to them (A / Space): a riddle with three answers. Right and they open the gate; wrong
@@ -311,10 +323,30 @@ heaven ramen ending.
   front, nothing in the way), hears you (walking within 6 m, through hedges; creeping only within 1.5 m)
   or smells you (2 m). Then the ring rolls over its fingers with a tingle, and it chases (3.15 m/s, you
   run 3.6) with a heartbeat that quickens as it closes in; lose it and it searches, then gives up. Keeper
-  gates stop it. Starts somewhere new each try. Caught (until the fight scene comes): a heart, knocked
-  away, and it vanishes in a puff, back somewhere far off 6 s later.
+  gates stop it. Starts somewhere new each try. Caught, or you go for it (A when it's right there):
+- **The fight** (`maze/src/game/fight.ts`): side on, in a little arena of its own that looks like the maze
+  (a moonlit clearing, a town street with lamps and window boxes, a castle wall with banners and torches). Walk, jump
+  (up), duck (down), block (Shift / B), hit (Space / A, up to three in a row; the third stuns). With the
+  stick hits are weak (9) and magic just fizzles; with the ruby's wand hits are stronger (10) and magic
+  works: tap for a bolt (13), hold for a blast (32, stuns). Its attacks all warn you: the claw winds back
+  (swipe: block or back off), the ring spins (thrown high: duck, low: jump, or block; it comes back),
+  it rises (slam where its shadow is: get out), and once it's hurt its eye flares (orbs roll along the
+  ground: jump). Win: it bursts into smoke and stays away 30 s. Lose: a heart, thrown clear, away 8 s.
+  Going for it yourself gets you a free moment while it reels. Numbers in `FIGHT`.
 - **The ruby**: it rises, spins, bursts into light, and the light streams into your stick, which wakes
   up as a wand (a glowing jewel on the tip).
+- **Saving** (`maze/src/data/save.ts`, in localStorage): the hedge maze is open from the start and each
+  ruby opens the next maze. It remembers each maze's best time and most hearts left (on the maze list),
+  whether you've been to heaven (then the title offers it again), and who you played last. "Start over"
+  on the title forgets it all.
+- **Heaven** (`maze/src/game/heaven.ts`): after the castle, "Up to heaven!". Down through the clouds to a
+  long table under floating paper lanterns, a bowl of ramen at every place, and everyone you didn't play
+  sitting round it (the monster too, at the far end, chopsticks in its claw). You come through the
+  golden gate with your wand, they all jump up and cheer, the three rubies fly out of the wand and circle
+  over the table, then everyone slurps (pose `slurp` in `heroModel.ts`), steam rising, a harp playing.
+  THE END, then a menu (stay and watch them eat, play again, main menu). A / Space skips ahead.
+- **The title** shows a made-up hedge maze from high up, going slowly round (not the real one: no
+  peeking at the way to the ruby).
 
 ## Tools
 
@@ -380,6 +412,14 @@ node tools/maze.mjs 0 youser        # A Maze In: start, walk, big map, the ruby 
 node tools/maze-traps.mjs           # A Maze In: thorns, wasps (hurrying and creeping), mud, a riddle right and wrong, out of hearts
 node tools/maze-monster.mjs         # A Maze In: the monster close up; creeping/walking past it; seen, chased, caught
 node tools/maze-run.mjs 4           # A Maze In: a player who knows the way runs to the ruby round the traps; what the monster did
+node tools/maze-fight.mjs 3         # A Maze In: a scripted fighter takes it on 3 times with the stick, 3 with the wand
+node tools/maze-traps2.mjs          # A Maze In: the town and castle traps (manhole, flowerpot, honey, spikes, fire, trapdoor) do what they should
+node tools/maze-themes.mjs 1        # A Maze In: pictures of a maze (1 city, 2 castle): way in, every trap, the chamber, a keeper, the fight arena
+node tools/maze-menus.mjs           # A Maze In: saving and menus (mazes open in turn, remembered after a reload, the castle leads to heaven, start over)
+node tools/maze-heaven.mjs [id]     # A Maze In: pictures of the ending (and the title) as one character
+node tools/maze-heaven-close.mjs    # A Maze In: close-ups of the heaven table
+npx tsx tools/maze-lengths.ts       # A Maze In: each maze's shortest walk in and out (with/without riddles, round the traps)
+npx tsx tools/maze-seeds.ts city 21 3 540 0.05 5   # A Maze In: seeds whose walk is near a target (theme, size, shifts, metres, loops, clearings)
 node tools/golf-walk.mjs 13 0.6 -10   # put the ball there and check the golfer's walk never goes through anything solid
 ```
 

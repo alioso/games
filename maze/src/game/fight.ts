@@ -13,6 +13,7 @@ import type { Walker } from '../entities/walker';
 import type { MonsterModel } from '../entities/monsterModel';
 import { canvasTex, flowersAt, leafTex, texMat, tuftsAt } from '../world/decor';
 import { ball, cyl, glow, toon, toonOwn } from '../world/toon';
+import { STYLES, banner, barrel, cobblePattern, flagPattern, flowerpot, house, mountain, wallLamp } from '../world/themes';
 import type { PadInput } from './controls';
 import { SFX } from './sounds';
 
@@ -24,13 +25,13 @@ const GRAV = 16, JUMP = 6.2;
 export const FIGHT = {
   heroHp: 100,
   monsterHp: 100,
-  stick: 7,
+  stick: 9,
   wand: 10,
   bolt: 13,
   blast: 32,
   /** How long holding magic charges a blast. */
   charge: 0.8,
-  swipe: 18,
+  swipe: 16,
   ring: 15,
   slam: 22,
   orb: 14,
@@ -85,6 +86,8 @@ export class Fight {
     this.shadow.position.set(AX, 0.03, 0);
     this.group.add(this.shadow);
     model.root.visible = true;
+    // (Its eye looks up at the sky in the maze, for the camera up there; here it looks at you.)
+    model.eye.rotation.x = -0.1;
     if (youStarted) {
       // You got the jump on it: it's reeling.
       this.mon.state = 'stun';
@@ -96,11 +99,22 @@ export class Fight {
     SFX.fightStart();
   }
 
-  /** A little stage that looks like where you are: hedges behind and at the sides, gravel, lanterns, the moon. */
+  /**
+   * A little stage that looks like where you are, under the night sky: hedges and gravel and lanterns
+   * (the hedge maze), a plastered town wall with street lamps over the cobbles and the rooftops behind
+   * (the town), or battlements, banners and torches over flagstones, mountains beyond (the castle).
+   */
   private buildArena(theme: Theme) {
     const g = this.group;
-    void theme;
     const floor = canvasTex(null, 512, 128, (c) => {
+      if (theme !== 'bushes') {
+        c.save();
+        c.scale(1.4, 1.4);
+        c.fillStyle = c.createPattern(theme === 'city' ? cobblePattern() : flagPattern(), 'repeat')!;
+        c.fillRect(0, 0, 512, 128);
+        c.restore();
+        return;
+      }
       c.fillStyle = '#c8b48a';
       c.fillRect(0, 0, 512, 128);
       for (let i = 0; i < 1800; i++) {
@@ -112,7 +126,7 @@ export class Fight {
     ground.position.set(AX, 0, 0.5);
     ground.receiveShadow = true;
     g.add(ground);
-    const grass = new THREE.Mesh(new THREE.PlaneGeometry(60, 40).rotateX(-Math.PI / 2), toon(0x3e6a30));
+    const grass = new THREE.Mesh(new THREE.PlaneGeometry(60, 40).rotateX(-Math.PI / 2), toon(theme === 'bushes' ? 0x3e6a30 : theme === 'city' ? 0x5a5650 : 0x3a3a42));
     grass.position.set(AX, -0.01, 0);
     g.add(grass);
     // Hedges: a long one behind, one at each end.
@@ -133,22 +147,87 @@ export class Fight {
         g.add(b);
       }
     };
-    hedge(HALF * 2 + 4, 0.9, 0, -1.6);
-    hedge(0.9, 4, -HALF - 1.2, 0.4);
-    hedge(0.9, 4, HALF + 1.2, 0.4);
-    // Lanterns on posts along the back.
-    for (const x of [-4, 0, 4]) {
-      g.add(cyl(0.06, 0.07, 2.4, toon(0x6a4428), AX + x, 0, -1.0, 8));
-      g.add(cyl(0.1, 0.1, 0.22, glow(0xffc060, 1.8), AX + x, 2.3, -0.92, 8));
-      const l = new THREE.PointLight(0xffb050, 3, 6, 1.6);
-      l.position.set(AX + x, 2.3, -0.6);
-      g.add(l);
+    // A wall block (town or castle stone), the picture 2 m along and its full height.
+    const wallBox = (w: number, d: number, x: number, z: number, h: number) => {
+      const geo = new THREE.BoxGeometry(w, h, d);
+      const uv = geo.attributes.uv as THREE.BufferAttribute;
+      for (let i = 0; i < uv.count; i++) uv.setX(i, uv.getX(i) * Math.max(w, d) / 2);
+      const m = new THREE.Mesh(geo, STYLES[theme].wallMat());
+      m.position.set(AX + x, h / 2, z);
+      m.castShadow = m.receiveShadow = true;
+      g.add(m);
+      return m;
+    };
+    if (theme === 'bushes') {
+      hedge(HALF * 2 + 4, 0.9, 0, -1.6);
+      hedge(0.9, 4, -HALF - 1.2, 0.4);
+      hedge(0.9, 4, HALF + 1.2, 0.4);
+      // Lanterns on posts along the back.
+      for (const x of [-4, 0, 4]) {
+        g.add(cyl(0.06, 0.07, 2.4, toon(0x6a4428), AX + x, 0, -1.0, 8));
+        g.add(cyl(0.1, 0.1, 0.22, glow(0xffc060, 1.8), AX + x, 2.3, -0.92, 8));
+        const l = new THREE.PointLight(0xffb050, 3, 6, 1.6);
+        l.position.set(AX + x, 2.3, -0.6);
+        g.add(l);
+      }
+    } else if (theme === 'city') {
+      const H = 2.2;
+      wallBox(HALF * 2 + 4, 0.8, 0, -1.6, H);
+      wallBox(0.8, 4, -HALF - 1.2, 0.4, H);
+      wallBox(0.8, 4, HALF + 1.2, 0.4, H);
+      for (const [w, d, x, z] of [[HALF * 2 + 4.1, 0.95, 0, -1.6], [0.95, 4.1, -HALF - 1.2, 0.4], [0.95, 4.1, HALF + 1.2, 0.4]]) {
+        g.add(new THREE.Mesh(new THREE.BoxGeometry(w, 0.14, d), toon(0xb05a40)).translateX(AX + x).translateY(H + 0.07).translateZ(z));
+      }
+      // Street lamps, pots of flowers on the wall, barrels, and the town's rooftops behind.
+      for (const x of [-4.2, 4.2]) {
+        g.add(wallLamp(AX + x, -1.0, 0, 2.3));
+        const l = new THREE.PointLight(0xffc070, 3.2, 7, 1.6);
+        l.position.set(AX + x, 2.5, -0.6);
+        g.add(l);
+      }
+      for (const x of [-2.2, -1.6, 1.4, 2.0, 2.6]) { const fp = flowerpot(1.4); fp.position.set(AX + x, H + 0.14, -1.6); g.add(fp); }
+      for (const x of [-HALF + 0.2, HALF - 0.4]) { const b = barrel(); b.position.set(AX + x, 0.35, -0.9); g.add(b); }
+      for (let x = -14; x < 14;) {
+        const w = 3 + Math.random() * 2.5;
+        const hs = house(w, 4, 4 + Math.random() * 3);
+        hs.position.set(AX + x + w / 2, 0, -5.5);
+        g.add(hs);
+        x += w + 0.2;
+      }
+    } else {
+      const H = 2.6;
+      wallBox(HALF * 2 + 4, 0.9, 0, -1.6, H);
+      wallBox(0.9, 4, -HALF - 1.2, 0.4, H);
+      wallBox(0.9, 4, HALF + 1.2, 0.4, H);
+      // Battlements along the top.
+      for (let x = -HALF - 1.5; x <= HALF + 1.5; x += 0.8) g.add(new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.4, 0.9), toon(0x9a96a0)).translateX(AX + x).translateY(H + 0.2).translateZ(-1.6));
+      // Banners and torches on the wall.
+      for (const [x, col] of [[-3, 0xc02838], [0, 0x2a4aa0], [3, 0xc02838]] as const) {
+        const b = banner(0.8, 1.5, col);
+        b.position.set(AX + x, H - 0.15, -1.13);
+        g.add(b);
+      }
+      for (const x of [-4.6, -1.5, 1.5, 4.6]) {
+        g.add(new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.3, 0.2), toon(0x2a2626)).translateX(AX + x).translateY(1.7).translateZ(-1.05));
+        g.add(new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.32, 6), glow(0xff8020, 2.4)).translateX(AX + x).translateY(2.0).translateZ(-1.0));
+        g.add(new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.2, 6), glow(0xffe060, 2.6)).translateX(AX + x).translateY(1.96).translateZ(-0.98));
+      }
+      for (const x of [-3, 3]) {
+        const l = new THREE.PointLight(0xff9040, 3.4, 7, 1.6);
+        l.position.set(AX + x, 2.0, -0.5);
+        g.add(l);
+      }
+      for (let i = 0; i < 6; i++) {
+        const m = mountain(5 + Math.random() * 3, 7 + Math.random() * 5);
+        m.position.set(AX - 15 + i * 6 + Math.random() * 2, 0, -9 - Math.random() * 1.5);
+        g.add(m);
+      }
     }
     // The moon and a dark sky behind.
     const sky = canvasTex(null, 4, 128, (c) => {
       const grd = c.createLinearGradient(0, 0, 0, 128);
-      grd.addColorStop(0, '#0a0c24');
-      grd.addColorStop(1, '#2a2a50');
+      grd.addColorStop(0, theme === 'castle' ? '#04061a' : '#0a0c24');
+      grd.addColorStop(1, theme === 'city' ? '#5a3a6a' : theme === 'castle' ? '#1a2050' : '#2a2a50');
       c.fillStyle = grd;
       c.fillRect(0, 0, 4, 128);
     }, false);
@@ -163,9 +242,11 @@ export class Fight {
       st.position.set(AX + (Math.random() - 0.5) * 40, 4 + Math.random() * 12, -11.8);
       g.add(st);
     }
-    const fl: [number, number, number][] = [], tf: [number, number, number][] = [];
-    for (let i = 0; i < 60; i++) (i % 2 ? fl : tf).push([AX + (Math.random() - 0.5) * (HALF * 2 + 2), 0, -1.05 + Math.random() * 0.25]);
-    g.add(flowersAt(fl), tuftsAt(tf));
+    if (theme === 'bushes') {
+      const fl: [number, number, number][] = [], tf: [number, number, number][] = [];
+      for (let i = 0; i < 60; i++) (i % 2 ? fl : tf).push([AX + (Math.random() - 0.5) * (HALF * 2 + 2), 0, -1.05 + Math.random() * 0.25]);
+      g.add(flowersAt(fl), tuftsAt(tf));
+    }
     // Light: moonlight from the front-side, a soft sky.
     g.add(new THREE.HemisphereLight(0xb8c8ff, 0x3a4a2a, 1.4));
     const moonLight = new THREE.DirectionalLight(0xdde4ff, 2.2);
@@ -610,7 +691,8 @@ export class Fight {
     this.walker.fightPose(dt, pose, p, hitAt, h.y, 0);
     // It.
     this.model.root.position.set(AX + m.x, m.y, 0);
-    this.model.root.rotation.y = m.face > 0 ? Math.PI / 2 : -Math.PI / 2;
+    // Three-quarters toward the camera (it's a flat slab: side on, you'd only see its edge), turned your way.
+    this.model.root.rotation.y = m.face * 0.55;
     if (m.state === 'stun') this.model.root.rotation.z = Math.sin(this.t * 8) * 0.12;
     else this.model.root.rotation.z = 0;
     if (m.state === 'hurt') this.model.root.position.x += Math.sin(this.t * 60) * 0.04;
@@ -620,8 +702,8 @@ export class Fight {
     // Camera: side on, a little above, framing the two of you; swinging in from above at the start.
     const mid = Math.max(-HALF + 2.5, Math.min(HALF - 2.5, (h.x + m.x) / 2));
     const span = Math.abs(h.x - m.x);
-    const wantPos = new THREE.Vector3(AX + mid, 2.4 + span * 0.08, 7.2 + span * 0.35);
-    const wantLook = new THREE.Vector3(AX + mid, 1.0, 0);
+    const wantPos = new THREE.Vector3(AX + mid, 1.9 + span * 0.06, 4.8 + span * 0.3);
+    const wantLook = new THREE.Vector3(AX + mid, 1.05, 0);
     const c = this.cam;
     if (!c.init) { c.pos.set(AX + mid, 9, 6); c.look.copy(wantLook); c.init = true; }
     const k = 1 - Math.exp(-dt * (this.phase === 'intro' ? 4 : 5));
@@ -646,6 +728,7 @@ export class Fight {
     this.model.handStiff = 30;
     this.model.ring.visible = true;
     this.model.setEyeGlow(0);
+    this.model.eye.rotation.x = -0.75;
     this.saved.parent?.add(this.walker.root);
     this.saved.mparent?.add(this.model.root);
     this.walker.fightPose(0, 'idle');

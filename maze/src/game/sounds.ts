@@ -2,6 +2,7 @@
 // evening of crickets and a breeze round the hedges, the ruby's hum (louder the nearer you are: a
 // warmer/colder clue), the magic when you take it and the wand waking up, and a fanfare at the way out.
 import { synth } from '@engine/audio';
+import type { Theme } from '../data/mazes';
 
 const rnd = (a: number, b: number) => a + Math.random() * (b - a);
 
@@ -12,6 +13,13 @@ class MazeAudio {
   private hum!: GainNode;
   private cricketT = 1;
   private buzzG!: GainNode;
+  private theme: Theme = 'bushes';
+  private ambT = 3;
+
+  /** Which maze we're in (the evening sounds, footsteps, how the walls move). */
+  setTheme(t: Theme) {
+    this.theme = t;
+  }
 
   private ready() {
     if (this.ctx) return true;
@@ -105,12 +113,18 @@ class MazeAudio {
     s.stop(t + dur + 0.05);
   }
 
-  /** A footstep on gravel (quiet when creeping). */
+  /** A footstep: crunch on gravel, a click on cobbles, a tap echoing off castle stone (quiet when creeping). */
   step(soft: boolean) {
     if (!this.ready()) return;
     const t = this.now, v = soft ? 0.05 : 0.16;
-    this.hiss(t, rnd(1800, 2600), 1.2, 0.07, v);
-    this.hiss(t + 0.012, rnd(3500, 5000), 2, 0.04, v * 0.6);
+    if (this.theme === 'bushes') {
+      this.hiss(t, rnd(1800, 2600), 1.2, 0.07, v);
+      this.hiss(t + 0.012, rnd(3500, 5000), 2, 0.04, v * 0.6);
+    } else {
+      this.tone('sine', rnd(180, 230), 90, t, 0.05, v * 0.9, 0.002);
+      this.hiss(t, rnd(2400, 3400), 3, 0.035, v * 0.7);
+      if (this.theme === 'castle') { this.tone('sine', 200, 100, t + 0.11, 0.05, v * 0.25, 0.002); this.hiss(t + 0.11, 2800, 3, 0.03, v * 0.2); }
+    }
   }
 
   /** Every frame: crickets now and then, and the ruby's hum by how near it is (0..1). */
@@ -118,10 +132,110 @@ class MazeAudio {
     if (!this.ready()) return;
     this.hum.gain.setTargetAtTime(0.05 * rubyNear * rubyNear, this.now, 0.3);
     this.cricketT -= dt;
-    if (this.cricketT <= 0) {
-      this.cricketT = rnd(0.6, 2.5);
+    if (this.cricketT <= 0 && this.theme !== 'castle') {
+      this.cricketT = rnd(0.6, 2.5) * (this.theme === 'city' ? 2.5 : 1);
       const t = this.now, f = rnd(4200, 5200), n = Math.floor(rnd(3, 7));
       for (let i = 0; i < n; i++) this.tone('sine', f, f * 1.02, t + i * 0.055, 0.025, 0.012, 0.004);
+    }
+    // The town: pigeons cooing, a dog far off, the church bell now and then. The castle: water
+    // dripping, the wind gusting round the battlements, an owl.
+    this.ambT -= dt;
+    if (this.ambT <= 0 && this.theme !== 'bushes') {
+      this.ambT = rnd(2.5, 6);
+      const t = this.now, r = Math.random();
+      if (this.theme === 'city') {
+        if (r < 0.5) for (let i = 0; i < 3; i++) this.tone('sine', 420, 340, t + i * 0.32, 0.22, 0.025, 0.05);
+        else if (r < 0.75) for (let i = 0; i < 2; i++) { this.tone('sawtooth', 300, 200, t + i * 0.25, 0.1, 0.012, 0.01); this.hiss(t + i * 0.25, 900, 2, 0.08, 0.01); }
+        else for (let i = 0; i < 3; i++) { for (const f of [392, 784, 1176, 470]) this.tone('sine', f, f, t + i * 1.1, 2.2, 0.018, 0.005); }
+      } else {
+        if (r < 0.45) { const f = rnd(1200, 1800); this.tone('sine', f, f * 0.5, t, 0.08, 0.04, 0.002); this.tone('sine', f * 1.1, f * 0.6, t + 0.3, 0.06, 0.012, 0.002); }
+        else if (r < 0.8) this.wind(t);
+        else { this.tone('sine', 380, 340, t, 0.35, 0.03, 0.08); this.tone('sine', 400, 330, t + 0.55, 0.6, 0.03, 0.08); }
+      }
+    }
+  }
+
+  /** A gust of wind (castle). */
+  private wind(t: number) {
+    const ctx = this.ctx!;
+    const s = ctx.createBufferSource();
+    s.buffer = this.noise;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.Q.value = 3;
+    bp.frequency.setValueAtTime(300, t);
+    bp.frequency.linearRampToValueAtTime(700, t + 1.2);
+    bp.frequency.linearRampToValueAtTime(250, t + 2.6);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.05, t + 1.0);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 2.8);
+    s.connect(bp).connect(g).connect(this.out);
+    s.start(t, Math.random());
+    s.stop(t + 2.9);
+  }
+
+  /**
+   * A trap's noise (vol 0..1 by how near it is): spikes rattling then SHING; a dragon drawing breath
+   * then the WHOOSH of fire; a pot whistling down then smashing; a trapdoor creaking, then crashing
+   * open; the clang of falling down a manhole.
+   */
+  trap(kind: string, vol: number) {
+    if (!this.ready()) return;
+    const t = this.now, v = vol;
+    switch (kind) {
+      case 'rattle':
+        for (let i = 0; i < 5; i++) this.hiss(t + i * 0.05, 5000, 4, 0.03, 0.05 * v);
+        break;
+      case 'shing':
+        this.tone('sawtooth', 2400, 1800, t, 0.25, 0.04 * v, 0.002);
+        this.hiss(t, 6500, 2, 0.2, 0.12 * v);
+        this.tone('sine', 120, 60, t, 0.1, 0.15 * v, 0.002);
+        break;
+      case 'hiss':
+        this.hiss(t, 1800, 0.8, 0.6, 0.05 * v);
+        this.tone('sine', 90, 140, t, 0.6, 0.06 * v, 0.3);
+        break;
+      case 'whoosh': {
+        const ctx = this.ctx!;
+        const s = ctx.createBufferSource();
+        s.buffer = this.noise;
+        const lp = ctx.createBiquadFilter();
+        lp.type = 'lowpass';
+        lp.frequency.setValueAtTime(400, t);
+        lp.frequency.exponentialRampToValueAtTime(2200, t + 0.15);
+        lp.frequency.exponentialRampToValueAtTime(600, t + 1.2);
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.3 * v, t + 0.08);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 1.3);
+        s.connect(lp).connect(g).connect(this.out);
+        s.start(t, Math.random());
+        s.stop(t + 1.4);
+        for (let i = 0; i < 8; i++) this.hiss(t + 0.1 + i * 0.13, rnd(1500, 4000), 3, 0.04, 0.05 * v);
+        break;
+      }
+      case 'whistle':
+        this.tone('sine', 1800, 700, t, 0.32, 0.035 * v, 0.02);
+        break;
+      case 'smash':
+        this.tone('sine', 160, 60, t, 0.12, 0.25 * v, 0.002);
+        for (let i = 0; i < 6; i++) this.hiss(t + i * 0.03 + Math.random() * 0.02, rnd(2500, 6000), 4, 0.08, 0.12 * v);
+        for (let i = 0; i < 4; i++) this.tone('triangle', rnd(1800, 3200), rnd(1500, 2800), t + 0.05 + i * 0.05, 0.08, 0.03 * v, 0.002);
+        break;
+      case 'creak':
+        this.tone('sawtooth', 180, 240, t, 0.35, 0.03 * v, 0.05);
+        this.tone('sawtooth', 260, 190, t + 0.3, 0.3, 0.02 * v, 0.05);
+        break;
+      case 'trapdoor':
+        this.tone('sawtooth', 300, 120, t, 0.2, 0.05 * v, 0.01);
+        this.tone('sine', 110, 40, t + 0.1, 0.4, 0.3 * v, 0.005);
+        this.hiss(t + 0.1, 400, 1, 0.3, 0.2 * v);
+        break;
+      case 'clang':
+        for (const f of [420, 610, 890]) this.tone('triangle', f, f * 0.98, t + 0.25, 0.6, 0.06 * v, 0.002);
+        this.tone('sine', 900, 300, t, 0.25, 0.03 * v, 0.01);
+        break;
     }
   }
 
@@ -329,10 +443,15 @@ class MazeAudio {
     this.buzzG.gain.setTargetAtTime(0.06 * near * near, this.now, 0.15);
   }
 
-  /** A boot in the mud. */
-  squelch() {
+  /** A boot in the mud (or pulling free of sticky honey). */
+  squelch(sticky = false) {
     if (!this.ready()) return;
     const t = this.now;
+    if (sticky) {
+      this.tone('sine', 220, 480, t, 0.16, 0.12, 0.03);
+      this.hiss(t + 0.1, 1400, 3, 0.06, 0.06);
+      return;
+    }
     this.tone('sine', 140, 60, t, 0.12, 0.2, 0.01);
     this.hiss(t, 700, 2, 0.1, 0.1);
   }
@@ -402,7 +521,7 @@ class MazeAudio {
     this.hiss(t + 0.4, 6000, 1, 0.6, 0.06);
   }
 
-  /** The maze shifts: a deep rumble and leaves rustling as the hedges move. */
+  /** The maze shifts: a deep rumble, and leaves rustling as the hedges move (or stones grinding). */
   rumble() {
     if (!this.ready()) return;
     const ctx = this.ctx!, t = this.now;
@@ -419,7 +538,9 @@ class MazeAudio {
     s.start(t);
     s.stop(t + 2.3);
     this.tone('sine', 55, 40, t, 2, 0.25, 0.2);
-    for (let i = 0; i < 14; i++) this.hiss(t + 0.2 + i * 0.12 + Math.random() * 0.05, rnd(2500, 5000), 1.5, 0.12, 0.05);
+    // Leaves rustling (hedges), or stone grinding on stone.
+    if (this.theme === 'bushes') for (let i = 0; i < 14; i++) this.hiss(t + 0.2 + i * 0.12 + Math.random() * 0.05, rnd(2500, 5000), 1.5, 0.12, 0.05);
+    else for (let i = 0; i < 22; i++) this.hiss(t + 0.15 + i * 0.08 + Math.random() * 0.04, rnd(300, 900), 4, 0.1, 0.12);
   }
 
   /** Out with the ruby! */
@@ -430,6 +551,76 @@ class MazeAudio {
       this.tone('triangle', f, f, t + i * 0.13, 0.22 + (i === 6 ? 0.7 : 0), 0.14);
       this.tone('sine', f / 2, f / 2, t + i * 0.13, 0.2, 0.06);
     });
+  }
+
+  // ---------- heaven ----------
+
+  private musT = 0;
+  private musStep = 0;
+  /** In heaven: crickets and the rest hush, a soft harp plays round and round. */
+  heavenMusic(on: boolean) {
+    this.heavenOn = on;
+    this.musStep = 0;
+    this.musT = 0;
+  }
+  private heavenOn = false;
+
+  /** Each frame in heaven: schedule the next harp notes a little ahead. */
+  heavenUpdate() {
+    if (!this.ready() || !this.heavenOn) return;
+    const now = this.now;
+    if (this.musT < now) this.musT = now + 0.1;
+    // F · Dm · B♭ · C, each a bar of eight harp notes, with a bell tune on top every other time round.
+    const CHORDS = [[349, 440, 523, 698], [294, 349, 440, 587], [233, 294, 349, 466], [262, 330, 392, 523]];
+    const TUNE = [880, 0, 784, 698, 0, 0, 659, 0, 587, 0, 698, 0, 0, 0, 0, 0, 698, 0, 784, 880, 0, 0, 1047, 0, 932, 0, 880, 0, 784, 0, 0, 0];
+    const beat = 0.3;
+    while (this.musT < now + 0.4) {
+      const st = this.musStep, bar = Math.floor(st / 8) % 4, ch = CHORDS[bar], i = st % 8;
+      const f = ch[[0, 1, 2, 3, 2, 1, 2, 3][i]] * (i >= 3 && i <= 5 ? 1 : 1);
+      this.tone('triangle', f, f, this.musT, 0.9, 0.035, 0.01);
+      this.tone('sine', f * 2, f * 2, this.musT, 0.5, 0.012, 0.01);
+      if (i === 0) { this.tone('sine', ch[0] / 2, ch[0] / 2, this.musT, 2.3, 0.05, 0.2); this.tone('sine', ch[2] / 2, ch[2] / 2, this.musT, 2.3, 0.025, 0.3); }
+      const round = Math.floor(st / 32);
+      const m = TUNE[st % 32];
+      if (round % 2 === 1 && m) { this.tone('sine', m, m, this.musT, 0.8, 0.05, 0.01); this.tone('sine', m * 3, m * 3, this.musT, 0.25, 0.008, 0.005); }
+      this.musT += beat;
+      this.musStep++;
+    }
+  }
+
+  /** A good long slurp of noodles (vol by how near). */
+  slurp(vol = 1) {
+    if (!this.ready()) return;
+    const t = this.now, n = 7 + Math.floor(Math.random() * 5);
+    for (let i = 0; i < n; i++) this.hiss(t + i * 0.045, 700 + i * 160 + rnd(-60, 60), 5, 0.05, 0.06 * vol);
+    this.tone('sine', 300, 520, t, n * 0.045, 0.02 * vol, 0.02);
+  }
+
+  /** Chopsticks on a bowl. */
+  clink(vol = 1) {
+    if (!this.ready()) return;
+    const t = this.now, f = rnd(2200, 2900);
+    this.tone('sine', f, f, t, 0.18, 0.03 * vol, 0.001);
+    this.tone('sine', f * 1.5, f * 1.5, t, 0.1, 0.012 * vol, 0.001);
+  }
+
+  /** Everyone at the table: hooray! */
+  hooray() {
+    if (!this.ready()) return;
+    const t = this.now;
+    for (let i = 0; i < 9; i++) {
+      const p = rnd(260, 620), d = rnd(0.35, 0.6), s = t + rnd(0, 0.25);
+      this.tone('sawtooth', p * 0.9, p * 1.35, s, d * 0.5, 0.012, 0.03);
+      this.tone('sawtooth', p * 1.35, p * 1.1, s + d * 0.5, d * 0.5, 0.012, 0.01);
+    }
+    [523, 659, 784, 1047].forEach((f, i) => this.tone('triangle', f, f, t + 0.1 + i * 0.1, 0.5, 0.08));
+  }
+
+  /** A soft choir "aah" (the gates open). */
+  aah() {
+    if (!this.ready()) return;
+    const t = this.now;
+    for (const f of [349, 440, 523, 698]) for (const d of [-1.5, 1.5]) this.tone('sine', f + d, f + d, t, 3.2, 0.03, 1.2);
   }
 
   ui() {

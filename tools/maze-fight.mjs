@@ -33,7 +33,7 @@ for (const powered of [false, true]) {
         if (shots.length) {
           const s = shots[0];
           if (s.kind === 'ring' && s.y > 0.8) moveZ = 1; else moveZ = -1;
-        } else if (mo.state === 'tell' && mo.attack === 'swipe' && Math.abs(d) < 2.4) block = true;
+        } else if ((mo.state === 'tell' || mo.state === 'attack') && mo.attack === 'swipe' && Math.abs(d) < 2.6) block = true;
         else if (mo.state === 'tell' && mo.attack === 'slam') moveX = Math.sign(h.x - mo.slamX || 1);
         else if (mo.state === 'attack' && mo.attack === 'slam') moveX = Math.sign(h.x - mo.x || 1);
         else {
@@ -53,10 +53,11 @@ for (const powered of [false, true]) {
       };
     }, powered);
     const t0 = Date.now();
-    for (let i = 0; i < 120; i++) {
+    for (let i = 0; i < 90; i++) {
       await page.waitForTimeout(500);
       if (shot < 4 && (i === 2 || i === 5)) await page.screenshot({ path: `${out}fight-${shot++}.png` });
       const done = await page.evaluate(() => { const l = window.maze.level; return !l.fight ? 'over' : l.fight.phase === 'won' || l.fight.phase === 'lost' ? l.fight.phase : ''; });
+      if (process.env.TRACE) console.log(i, await page.evaluate(() => { const f = window.maze.level.fight; return f ? `${f.phase} ${f.mon.state} ${f.mon.attack} you ${Math.round(f.hero.hp)} it ${Math.round(f.mon.hp)}` : 'none'; }));
       if (done) break;
     }
     const r = await page.evaluate(() => { const f = window.maze.level.fight; return f ? `${f.phase}: you ${Math.round(f.hero.hp)} hp, it ${Math.round(f.mon.hp)} hp` : 'over'; });

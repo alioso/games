@@ -1,6 +1,8 @@
 // On screen while exploring: your hearts (top left), the map (top right; the big map on a button),
 // big banners, and a line of help at the bottom. The map only shows what you've seen, plus a pulsing
 // red glow round where the ruby is (roughly), and the way out once you have it.
+import { STYLES } from '../world/themes';
+import type { TrapKind } from '../data/mazes';
 import type { Layout } from '../data/mazes';
 import { tileMid } from '../world/maze';
 
@@ -11,9 +13,22 @@ export interface MapView {
   hero: { x: number; z: number; yaw: number };
   hasRuby: boolean;
   /** Traps and keepers (drawn once their tile's been seen). */
-  traps: { kind: string; tile: [number, number] }[];
+  traps: { kind: TrapKind; tile: [number, number] }[];
   keepers: { tile: [number, number]; open: boolean }[];
 }
+
+/** How each trap shows on the map. */
+const TRAP_ICON: Record<TrapKind, [string, string]> = {
+  thorns: ['✖', '#a02020'],
+  wasps: ['🐝', '#15110f'],
+  mud: ['●', '#6a4a2a'],
+  manhole: ['◉', '#2a2a30'],
+  flowerpot: ['🪴', '#15110f'],
+  honey: ['🍯', '#15110f'],
+  spikes: ['▲', '#a02020'],
+  fire: ['🔥', '#15110f'],
+  trapdoor: ['▦', '#6a4a2a'],
+};
 
 export class Hud {
   private el: HTMLDivElement;
@@ -101,6 +116,13 @@ export class Hud {
     this.el.classList.toggle('hidden', !on);
   }
 
+  /** In a maze (hearts and the map) or not (heaven: just banners and hints). */
+  setPlaying(on: boolean) {
+    this.hearts.style.display = on ? '' : 'none';
+    this.map.style.display = on ? '' : 'none';
+    if (!on) this.setHurt(0);
+  }
+
   setHearts(n: number, max = 3) {
     if (n === this.heartsN) return;
     this.heartsN = n;
@@ -141,6 +163,7 @@ export class Hud {
     c.clearRect(0, 0, W, H);
     c.fillStyle = '#f4ecd8';
     c.fillRect(0, 0, W, H);
+    const st = STYLES[v.layout.def.theme];
     const start = (i: number) => Math.floor(i / 2) * 3.1 + (i % 2 ? 0.8 : 0), size = (i: number) => (i % 2 ? 2.3 : 0.8);
     for (let ty = 0; ty < th; ty++) for (let tx = 0; tx < tw; tx++) {
       const isWall = wall[ty * tw + tx] === 1;
@@ -149,7 +172,7 @@ export class Hud {
         ? [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => { const x = tx + dx, y = ty + dy; return x >= 0 && y >= 0 && x < tw && y < th && !wall[y * tw + x] && v.seen(x, y); })
         : v.seen(tx, ty);
       if (!known) continue;
-      c.fillStyle = isWall ? '#3e7a30' : '#d8c49a';
+      c.fillStyle = isWall ? st.mapWall : st.mapPath;
       c.fillRect(X(start(tx)) - 0.5, Y(start(ty)) - 0.5, size(tx) * k + 1, size(ty) * k + 1);
     }
     // Traps and keepers you've seen.
@@ -159,9 +182,10 @@ export class Hud {
       c.font = `${Math.max(10, 1.6 * k)}px sans-serif`;
       c.textAlign = 'center';
       c.textBaseline = 'middle';
-      c.fillText(t.kind === 'thorns' ? '✖' : t.kind === 'wasps' ? '🐝' : '●', cx, cy);
-      if (t.kind === 'thorns') { c.fillStyle = '#a02020'; c.fillText('✖', cx, cy); }
-      if (t.kind === 'mud') { c.fillStyle = '#6a4a2a'; c.fillText('●', cx, cy); }
+      // Each trap its own mark: red crosses for the ones you mustn't walk into, a picture for the rest.
+      const [txt, col] = TRAP_ICON[t.kind] ?? ['●', '#15110f'];
+      c.fillStyle = col;
+      c.fillText(txt, cx, cy);
       c.fillStyle = '#15110f';
     }
     for (const kp of v.keepers) {

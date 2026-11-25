@@ -12,8 +12,13 @@ import { Youser } from './entities/youser';
 import { buildHero } from './entities/heroModel';
 import { CONTROL_HELP, Controller, NO_INPUT } from './game/controls';
 import { Level } from './game/level';
+import { Heaven } from './game/heaven';
+import { clock, finish, progress, resetProgress, save, unlocked } from './data/save';
+import { setDarkOff } from './world/darkness';
+import { MazeWorld } from './world/maze';
 import { SFX } from './game/sounds';
 import { InkEffect } from './world/inkEffect';
+import { STYLES } from './world/themes';
 import { Hud } from './ui/hud';
 import { Menu, type MenuItem } from './ui/menu';
 
@@ -35,9 +40,10 @@ padStatus.className = 'padstatus';
 ui.appendChild(padStatus);
 
 let level: Level | null = null;
+let heaven: Heaven | null = null;
 let paused = false;
 let doneShown = false;
-let character: Character = CHARACTERS[0];
+let character: Character = CHARACTERS.find((c) => c.id === progress.hero) ?? CHARACTERS[0];
 let levelIndex = 0;
 
 // ---------- characters ----------
@@ -62,46 +68,142 @@ function characterPic(c: Character) {
 
 function playLevel(i: number) {
   levelIndex = i;
-  level?.dispose();
+  clearScene();
   level = new Level(MAZES[i], i + 1, character);
   renderer.scene.add(level.group);
+  (renderer.scene.background as THREE.Color).set(STYLES[MAZES[i].theme].clear);
   doneShown = false;
   hud.show(true);
+  hud.setPlaying(true);
   hud.setBigMap(false);
   menu.hide();
   paused = false;
   controller.reset();
 }
 
+/** Whatever's on (a maze, heaven, the title's backdrop) goes. */
+function clearScene() {
+  level?.dispose();
+  level = null;
+  heaven?.dispose();
+  heaven = null;
+  hideBackdrop();
+  hud.setHint('');
+  hud.setBubble(null);
+  hud.setFight(null);
+}
+
 function levelDone() {
   const next = levelIndex + 1;
-  const hearts = level?.hearts ?? 3;
+  const hearts = level?.hearts ?? 3, time = level?.elapsed ?? 0;
+  const firstTime = !progress.done[levelIndex];
+  const before = progress.best[levelIndex];
+  const best = finish(levelIndex, time, hearts);
+  const timeLine = `Time: <b>${clock(time)}</b>${best && before ? ' · <b class="new-best">NEW BEST!</b>' : before ? ` · best ${clock(before.time)}` : ''}`;
+  const last = next >= MAZES.length;
   menu.show({
     title: `RUBY ${levelIndex + 1} OF 3!`,
-    subtitle: `You found the ruby and got out of ${MAZES[levelIndex].name}${hearts === 3 ? ' without a scratch!' : ` with ${hearts} ${hearts === 1 ? 'heart' : 'hearts'} left.`}<br>Your hearts fill up again for the next maze.`,
-    items: next < MAZES.length
+    subtitle: `You found the ruby and got out of ${MAZES[levelIndex].name}${hearts === 3 ? ' without a scratch!' : ` with ${hearts} ${hearts === 1 ? 'heart' : 'hearts'} left.`}<br>${timeLine}${!last ? `<br>${firstTime ? `<b>${MAZES[next].name}</b> is open now!` : 'Your hearts fill up again for the next maze.'}` : ''}`,
+    items: !last
       ? [
-        // (The city and castle mazes come in a later milestone; until then, play this one again.)
-        { label: 'Play it again', sub: `${MAZES[next].name} is coming soon`, action: () => playLevel(levelIndex) },
+        { label: `On to ${MAZES[next].name}`, sub: MAZE_BLURB[next], action: () => playLevel(next) },
+        { label: 'Play it again', sub: 'Try for a better time', action: () => playLevel(levelIndex) },
         { label: 'Main menu', action: titleMenu },
       ]
-      : [{ label: 'Main menu', action: titleMenu }],
+      : [
+        { label: 'Up to heaven!', sub: 'All three rubies: someone\'s waiting for you...', action: playHeaven },
+        { label: 'Play it again', sub: 'Try for a better time', action: () => playLevel(levelIndex) },
+        { label: 'Main menu', action: titleMenu },
+      ],
   });
+}
+
+// ---------- the ending ----------
+
+function playHeaven() {
+  clearScene();
+  heaven = new Heaven(character);
+  renderer.scene.add(heaven.group);
+  (renderer.scene.background as THREE.Color).set(0xbfe0ff);
+  hud.show(true);
+  hud.setPlaying(false);
+  menu.hide();
+  paused = false;
+  controller.reset();
+  progress.heaven = true;
+  heavenStay = false;
+  heavenMenuShown = false;
+  save();
+}
+
+function heavenMenu() {
+  menu.show({
+    title: 'THE END',
+    light: true,
+    subtitle: `${fullName(character)} found all three rubies<br>and had ramen in the clouds with everyone.<br><i>Thanks for playing A Maze In!</i>`,
+    items: [
+      { label: 'Stay a while', sub: 'Watch them eat', action: () => { menu.hide(); heavenStay = true; } },
+      { label: 'Play again', sub: 'Pick a hero and a maze', action: pickCharacter },
+      { label: 'Main menu', action: titleMenu },
+    ],
+  });
+}
+let heavenStay = false;
+let heavenMenuShown = false;
+
+// ---------- the title's backdrop: the hedge maze from high up, lights on, going slowly round ----------
+
+let backdrop: { world: MazeWorld; t: number } | null = null;
+function showBackdrop() {
+  if (backdrop) return;
+  // (A made-up one, not the real hedge maze: no peeking at the way to the ruby.)
+  const world = new MazeWorld(generate({ ...MAZES[0], seed: 4242 }));
+  renderer.scene.add(world.group);
+  (renderer.scene.background as THREE.Color).set(STYLES[MAZES[0].theme].clear);
+  setDarkOff(true);
+  backdrop = { world, t: 0 };
+}
+function hideBackdrop() {
+  if (!backdrop) return;
+  backdrop.world.dispose();
+  backdrop = null;
+  setDarkOff(false);
+}
+function backdropCamera(dt: number) {
+  if (!backdrop) return;
+  const b = backdrop, w = b.world;
+  b.t += dt;
+  w.update(dt, w.start);
+  const cx = w.width / 2, cz = w.depth / 2, a = 1.1 + b.t * 0.03, r = Math.max(w.width, w.depth) * 0.75;
+  renderer.camera.position.set(cx + Math.cos(a) * r, 26, cz + Math.sin(a) * r);
+  renderer.camera.lookAt(cx, 0, cz);
 }
 
 // ---------- menus ----------
 
 function titleMenu() {
-  level?.dispose();
-  level = null;
+  if (level || heaven) clearScene();
+  showBackdrop();
   hud.show(false);
+  const rubies = progress.done.filter(Boolean).length;
+  const items: MenuItem[] = [
+    { label: 'Play', sub: rubies === 0 ? 'Pick your hero' : `${'♦'.repeat(rubies)} ${rubies} of 3 rubies`, action: pickCharacter },
+  ];
+  if (progress.heaven) items.push({ label: 'Up to heaven', sub: 'Watch the ending again', action: () => { heavenStay = false; playHeaven(); } });
+  items.push({ label: 'Controls', action: () => controlsMenu(titleMenu) });
+  if (rubies > 0 || progress.heaven) items.push({ label: 'Start over', sub: 'Forget every ruby', action: resetMenu });
+  menu.show({ title: 'A MAZE IN', subtitle: 'Find the ruby · get back out · three mazes', items });
+}
+
+function resetMenu() {
   menu.show({
-    title: 'A MAZE IN',
-    subtitle: 'Find the ruby · get back out · three mazes',
+    title: 'Start over?',
+    subtitle: 'Every ruby, best time and heaven will be forgotten.<br>Only the hedge maze will be open.',
     items: [
-      { label: 'Play', sub: 'Pick your hero', action: pickCharacter },
-      { label: 'Controls', action: () => controlsMenu(titleMenu) },
+      { label: 'No, keep them', action: titleMenu },
+      { label: 'Yes, start over', action: () => { resetProgress(); titleMenu(); } },
     ],
+    back: titleMenu,
   });
 }
 
@@ -112,9 +214,38 @@ function pickCharacter() {
     items: CHARACTERS.map((c): MenuItem => ({
       label: fullName(c),
       html: `<img class="team-pic" src="${characterPic(c)}" alt="">`,
-      action: () => { character = c; playLevel(0); },
+      action: () => { character = c; progress.hero = c.id; save(); pickMaze(); },
     })),
+    focus: Math.max(0, CHARACTERS.indexOf(character)),
     back: titleMenu,
+  });
+}
+
+/** What each maze is like (on the menus). */
+const MAZE_BLURB = [
+  'Hedges · thorns, wasps and mud',
+  'Town walls · manholes, falling flowerpots and spilt honey',
+  'Castle stones · spikes, dragon fire and creaky trapdoors',
+];
+
+/** Which maze: the first is open, each ruby opens the next (done ones show your best). */
+function pickMaze() {
+  if (!level && !heaven) showBackdrop();
+  const next = progress.done.findIndex((d) => !d);
+  menu.show({
+    title: 'Which maze?',
+    subtitle: `${fullName(character)} goes in`,
+    items: MAZES.map((m, i): MenuItem => {
+      const b = progress.best[i];
+      if (!unlocked(i)) return { label: `🔒 ${m.name}`, sub: `Get the ruby from ${MAZES[i - 1].name} first`, disabled: true, action: () => {} };
+      return {
+        label: `${progress.done[i] ? '<span class="ruby-got">♦</span> ' : ''}${i + 1}. ${m.name}`,
+        sub: b ? `Best ${clock(b.time)} · <span class="best-hearts">${'♥'.repeat(b.hearts)}</span>${'♡'.repeat(3 - b.hearts)}` : MAZE_BLURB[i],
+        action: () => playLevel(i),
+      };
+    }),
+    focus: next < 0 ? 0 : next,
+    back: pickCharacter,
   });
 }
 
@@ -175,7 +306,9 @@ function hintFor(l: Level) {
   if (k) return `${btn('A', 'Space')} talk to ${k.keeper.look.name}`;
   const no = l.refusedNear();
   if (no) return `${no.keeper.look.name} won't let you through: find another way`;
-  if (l.inMud) return 'Stuck in the mud! Keep going...';
+  if (l.inMud) return l.slowKind === 'honey' ? 'Stuck in sticky honey! Keep going...' : 'Stuck in the mud! Keep going...';
+  const creep = l.creepNear();
+  if (creep) return `Hold ${btn('B', 'Shift')} to creep past ${creep === 'wasps' ? 'the wasps' : 'the creaky trapdoor'}`;
   if (l.canFight()) return `${btn('A', 'Space')} fight it!${l.walker.powered ? ' (your wand is ready)' : ' (with just a stick...)'}`;
   return `${btn('stick', 'arrows')} walk · hold ${btn('B', 'Shift')} to creep · ${btn('Y', 'M')} big map`;
 }
@@ -186,6 +319,14 @@ const loop = new GameLoop(
   (dt) => {
     const input = menu.open || paused ? NO_INPUT : controller.poll(dt);
     if (menu.open) controller.poll(dt);
+    if (heaven) {
+      if (!menu.open && heavenStay && (input.b.pause.pressed || input.b.action.pressed)) { heavenStay = false; heavenMenu(); return; }
+      heaven.update(dt, heavenStay ? NO_INPUT : input);
+      for (const e of heaven.events) hud.showBanner(e.text, e.sub, e.time, e.color);
+      heaven.events.length = 0;
+      if (heaven.menuReady && !menu.open && !heavenStay && !heavenMenuShown) { heavenMenuShown = true; heavenMenu(); }
+      return;
+    }
     if (!level) return;
     if (!menu.open && input.b.pause.pressed) { pauseMenu(); return; }
     if (paused) return;
@@ -209,6 +350,10 @@ const loop = new GameLoop(
   },
   (frameDt) => {
     menu.update(performance.now() / 1000);
+    if (heaven) {
+      heaven.render(frameDt, renderer.camera);
+      hud.setHint(menu.open ? '' : heavenStay ? `${btn('A', 'Space')} menu` : heaven.menuReady ? '' : `${btn('A', 'Space')} skip`);
+    } else if (backdrop) backdropCamera(frameDt);
     if (level) {
       level.render(paused ? 0 : frameDt, renderer.camera);
       const l = level, h = l.hero;
@@ -254,6 +399,13 @@ window.maze = {
   /** Tools: where a maze's shift will close and open passages (tile indices). */
   shiftOf(i: number) { return shiftAfterRuby(generate(MAZES[i])); },
   /** Start a maze straight away (tools): maze index, character id. */
+  /** The ending (tools): character id. */
+  heaven(id = 'wizard-duck') {
+    character = CHARACTERS.find((c) => c.id === id) ?? CHARACTERS[0];
+    playHeaven();
+  },
+  get heavenScene() { return heaven; },
+  progress,
   play(i = 0, id = 'wizard-duck') {
     character = CHARACTERS.find((c) => c.id === id) ?? CHARACTERS[0];
     playLevel(i);

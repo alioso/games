@@ -24,6 +24,8 @@ export interface MenuScreen {
   focus?: number;
   /** A wide panel (scorecards). */
   wide?: boolean;
+  /** A see-through, light backdrop (over heaven) instead of the dark green one. */
+  light?: boolean;
 }
 
 export class Menu {
@@ -45,7 +47,7 @@ export class Menu {
 
   show(s: MenuScreen) {
     this.screen = s;
-    this.el.className = 'menu' + (s.grid ? ' grid' : '') + (s.wide ? ' wide' : '');
+    this.el.className = 'menu' + (s.grid ? ' grid' : '') + (s.wide ? ' wide' : '') + (s.light ? ' light' : '');
     this.el.innerHTML = `
       <div class="menu-panel">
         <h1>${s.title}</h1>

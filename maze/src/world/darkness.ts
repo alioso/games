@@ -42,7 +42,8 @@ export function darken(m: THREE.Material) {
       .replace('#include <common>', '#include <common>\nvarying vec3 vDarkPos;\nuniform sampler2D uVis;\nuniform vec2 uVisOrigin;\nuniform vec2 uVisSize;\nuniform float uNoDark;')
       .replace('#include <dithering_fragment>', `#include <dithering_fragment>
   float vis = max(uNoDark, texture2D(uVis, (vDarkPos.xz - uVisOrigin) / uVisSize).r);
-  vec3 night = gl_FragColor.rgb * vec3(0.01, 0.011, 0.025) + vec3(0.004, 0.004, 0.01);
+  // (Nearly black whatever it is: bright castle stone mustn't show the maze's shape in the dark.)
+  vec3 night = min(gl_FragColor.rgb, vec3(1.0)) * vec3(0.0025, 0.0028, 0.006) + vec3(0.004, 0.004, 0.01);
   gl_FragColor.rgb = mix(night, gl_FragColor.rgb, vis);`);
   };
   m.customProgramCacheKey = () => 'dark';

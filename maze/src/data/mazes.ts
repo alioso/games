@@ -20,12 +20,16 @@ export interface MazeDef {
   loops: number;
   /** How many open clearings (2×2 cells) to carve. */
   clearings: number;
+  /** How many passages close when the maze shifts after the ruby. */
+  shifts: number;
 }
 
 export const MAZES: MazeDef[] = [
-  { name: 'The Hedge Maze', theme: 'bushes', w: 17, h: 17, seed: 7151, loops: 0.05, clearings: 4 },
-  { name: 'The City Walls', theme: 'city', w: 21, h: 21, seed: 2024, loops: 0.05, clearings: 5 },
-  { name: 'The Castle', theme: 'castle', w: 25, h: 25, seed: 9187, loops: 0.045, clearings: 6 },
+  { name: 'The Hedge Maze', theme: 'bushes', w: 17, h: 17, seed: 7151, loops: 0.05, clearings: 4, shifts: 4 },
+  // (Tuned with tools/maze-seeds.ts: the shortest walk in and back out is about 1.3× and 1.5× the
+  // hedge maze's, so each maze is a bit bigger and harder than the last without dragging on.)
+  { name: 'The City Walls', theme: 'city', w: 21, h: 21, seed: 7771, loops: 0.05, clearings: 5, shifts: 3 },
+  { name: 'The Castle', theme: 'castle', w: 23, h: 23, seed: 3212, loops: 0.045, clearings: 6, shifts: 3 },
 ];
 
 /** A small seeded random number generator (the same numbers for the same seed). */
@@ -40,7 +44,27 @@ export function rng(seed: number) {
   };
 }
 
-export type TrapKind = 'thorns' | 'wasps' | 'mud';
+export type TrapKind =
+  | 'thorns' | 'wasps' | 'mud'
+  | 'manhole' | 'flowerpot' | 'honey'
+  | 'spikes' | 'fire' | 'trapdoor';
+
+/**
+ * What a trap does to you:
+ * - step: walk into it and it hurts (thorns, an open manhole);
+ * - timed: it hurts only when it goes off, and you can see it coming (flowerpots, spikes, fire);
+ * - rush: hurry through and it gets you; creep and you're fine (wasps, a creaky trapdoor);
+ * - slow: it just slows you right down (mud, spilt honey).
+ */
+export const TRAP_HOW: Record<TrapKind, 'step' | 'timed' | 'rush' | 'slow'> = {
+  thorns: 'step', manhole: 'step',
+  flowerpot: 'timed', spikes: 'timed', fire: 'timed',
+  wasps: 'rush', trapdoor: 'rush',
+  mud: 'slow', honey: 'slow',
+};
+
+/** Traps that sit across a gap between two cells (the rest fill a cell). */
+export const IN_GAP: TrapKind[] = ['thorns', 'manhole', 'spikes'];
 
 /** A trap on one tile of the maze. */
 export interface Trap {
@@ -51,8 +75,8 @@ export interface Trap {
 /** How many of each trap a maze has. */
 const TRAPS: Record<Theme, [TrapKind, number][]> = {
   bushes: [['thorns', 6], ['wasps', 3], ['mud', 3]],
-  city: [['thorns', 7], ['wasps', 4], ['mud', 4]],
-  castle: [['thorns', 8], ['wasps', 5], ['mud', 5]],
+  city: [['manhole', 6], ['flowerpot', 4], ['honey', 4]],
+  castle: [['spikes', 6], ['fire', 5], ['trapdoor', 4]],
 };
 
 export interface Layout {
@@ -240,7 +264,7 @@ function populate(L: Layout, r: () => number) {
   const sim = after();
   const kout = bestGap(sim, rub, ent);
   if (kout >= 0 && wall[kout]) { wall[kout] = 0; sim[kout] = 0; keeperTiles.add(kout); L.keepers.push({ tile: [kout % tw, Math.floor(kout / tw)], way: 'out' }); }
-  // Traps: thorns and wasps must leave a way round (mud only slows you down).
+  // Traps that hurt must leave a way round (mud and honey only slow you down).
   const shifted = after();
   const blocking = new Set<number>(keeperTiles);
   const ok = () => walk(L, wall, ent, rub, blocking) < Infinity && walk(L, shifted, rub, ent, blocking) < Infinity;
@@ -271,11 +295,11 @@ function populate(L: Layout, r: () => number) {
       else k = Math.floor(r() * tw * th);
       if (wall[k] || taken.has(k) || special(k)) continue;
       const x = k % tw, y = Math.floor(k / tw);
-      // Thorns sit across a gap between cells; wasps and mud fill a cell.
-      if (kind === 'thorns' ? !passage(k) : !(x % 2 === 1 && y % 2 === 1)) continue;
+      // Thorns, manholes and spikes sit across a gap between cells; the rest fill a cell.
+      if (IN_GAP.includes(kind) ? !passage(k) : !(x % 2 === 1 && y % 2 === 1)) continue;
       // Not right next to another trap.
       if ([...taken].some((t) => Math.abs((t % tw) - x) + Math.abs(Math.floor(t / tw) - y) < 3)) continue;
-      if (kind !== 'mud') {
+      if (TRAP_HOW[kind] !== 'slow') {
         blocking.add(k);
         if (!ok()) { blocking.delete(k); continue; }
       }
@@ -338,8 +362,10 @@ export function shiftAfterRuby(L: Layout, blocked: Set<number> = new Set(L.keepe
     return n;
   };
   const closed: number[] = [];
-  for (let round = 0; round < 4; round++) {
+  for (let round = 0; round < L.def.shifts; round++) {
     const p = bfs();
+    // (Already cut off by the last one: the opening below makes a way again.)
+    if (p[to] === -2) break;
     const way: number[] = [];
     for (let k = to; k !== -1; k = p[k]) way.push(k);
     let best = -1, bestLen = -1, cut = -1;
